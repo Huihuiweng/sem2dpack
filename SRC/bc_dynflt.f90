@@ -1,5 +1,4 @@
 module bc_dynflt
-! slip weakening friction fault
 
   use bnd_grid, only: bnd_grid_type
   use distribution_cd
@@ -7,6 +6,7 @@ module bc_dynflt
   use bc_dynflt_swf
   use bc_dynflt_rsf
   use bc_dynflt_twf
+  use bc_dynflt_tp
 
   implicit none
   private
@@ -27,6 +27,7 @@ module bc_dynflt
     type(swf_type), pointer :: swf => null()
     type(rsf_type), pointer :: rsf => null()
     type(twf_type), pointer :: twf => null()
+    type(tp_type),  pointer :: tp  => null()
     logical :: allow_opening
     type(normal_type) :: normal
     type(bnd_grid_type), pointer :: bc1 => null(), bc2 => null()
@@ -53,7 +54,7 @@ contains
 !          followed, in order, by:
 !          1. &DIST_XXX blocks (from the DISTRIBUTIONS group) for arguments
 !             with suffix H, if present, in the order listed above.
-!          2. &BC_DYNFLT_SWF, &BC_DYNFLT_TWF or &BC_DYNFLT_RSF block(s) 
+!          2. &BC_DYNFLT_SWF, &BC_DYNFLT_TWF, &BC_DYNFLT_RSF or &BC_DYNFLT_TP block(s) 
 !             (if absent, default values are used)
 !          3. &BC_DYNFLT_NOR block (if absent, default values are used)
 !
@@ -61,9 +62,11 @@ contains
 !                  SWF = slip weakening friction
 !                  TWF = time weakening friction
 !                  RSF = rate and state dependent friction
+!                  TP  = thermal pressurization
 !                Some friction types can be combined. E.g. to set the 
 !                friction coefficient to the minimum of SWF and TWF, set 
 !                  friction='SWF','TWF'
+!                  TP can be combined with other frictions
 ! ARG: cohesion [dble] [0d0] part of the strength that is not proportional to 
 !                normal stress. It must be positive or zero.
 ! ARG: opening  [log] [T] Allow fault opening instead of tensile normal stress
@@ -107,7 +110,7 @@ contains
   double precision :: cohesion,Tt,Tn,ot1,otd,Sxx,Sxy,Sxz,Syz,Szz,V
   character(20) :: TtH,TnH, SxxH,SxyH,SxzH,SyzH,SzzH &
                   ,dt_txt,oxi2_txt, cohesionH, VH
-  character(3) :: friction(2)
+  character(3) :: friction(3)
   integer :: i,oxi(3)
   logical :: opening,osides
 
@@ -144,6 +147,7 @@ contains
 
   friction(1) = 'SWF'
   friction(2) = ''
+  friction(3) = ''
 
   cohesion = 0d0
   cohesionH = ''
@@ -186,7 +190,7 @@ contains
                     cohesionH,opening,ot1,dt_txt,oxi(1),oxi2_txt,oxi(3),osides
   endif
 
-  do i=1,2
+  do i=1,3,1
     select case (friction(i))
     case ('SWF')
       allocate(bc%swf)
@@ -197,6 +201,9 @@ contains
     case ('TWF')
       allocate(bc%twf)
       call twf_read(bc%twf,iin)
+    case ('TP')
+      allocate(bc%tp)
+      call tp_read(bc%tp,iin)
     case ('')
     case default
       call IO_abort('BC_DYNFLT: invalid friction')
@@ -361,6 +368,10 @@ contains
     call rsf_init(bc%rsf,bc%coord,dt)
   endif
 
+  if (associated(bc%tp)) then
+    call tp_init(bc%tp,bc%coord,dt)
+  endif
+
   allocate(bc%T(npoin,2))
   allocate(bc%D(npoin,ndof))
   allocate(bc%V(npoin,ndof))
@@ -413,6 +424,7 @@ contains
   if (any(bc%cohesion < 0d0)) call IO_abort('bc_dynflt_init: cohesion must be positive')
 
   ! Normal stress response
+  ! The initial pore pressure is assumed to be 0
   call normal_init(bc%normal,dt,bc%T0(:,2))
 
 !-- Open output files -----
@@ -571,7 +583,7 @@ contains
   double precision, intent(in) :: V(:,:),D(:,:)
   double precision, intent(inout) :: MxA(:,:)
 
-  double precision, dimension(bc%npoin) :: strength
+  double precision, dimension(bc%npoin) :: strength, eff_sigma
   double precision, dimension(bc%npoin,2) :: T
   double precision, dimension(bc%npoin,size(V,2)) :: dD,dV,dA
   integer :: ndof
@@ -605,6 +617,14 @@ contains
   if (bc%allow_opening) T(:,2) = min(T(:,2),0.d0) 
   ! Update normal stress variables
   call normal_update(bc%normal,T(:,2),dV(:,1)) 
+  eff_sigma = normal_getSigma(bc%normal)
+
+  ! Update pore pressure and temperature in TP
+  if (associated(bc%tp)) then
+    call thermpres_rate(bc%tp,bc%coord,bc%V(:,1),T(:,1),bc%D(:,1))
+    eff_sigma = eff_sigma + getPorepressure(bc%tp)
+  endif
+
  !DEVEL: maybe need here a second loop to obtain second order
 
  ! Update friction and shear stress
@@ -613,9 +633,9 @@ contains
  !-- velocity and state dependent friction 
   if (associated(bc%rsf)) then
     if (time%kind=='quasi-static') then
-      call rsf_qs_solver(bc%V(:,1),T(:,1), normal_getSigma(bc%normal), bc%rsf)
+      call rsf_qs_solver(bc%V(:,1),T(:,1), eff_sigma, bc%rsf)
     else
-      call rsf_solver(bc%V(:,1), T(:,1), normal_getSigma(bc%normal), bc%rsf, bc%Z(:,1))
+      call rsf_solver(bc%V(:,1), T(:,1), eff_sigma, bc%rsf, bc%Z(:,1))
     endif
     bc%MU = rsf_mu(bc%V(:,1), bc%rsf)
                                         
@@ -625,7 +645,7 @@ contains
    ! superimposed time-weakening
     if (associated(bc%twf)) bc%MU = min( bc%MU, twf_mu(bc%twf,bc%coord,time%time,bc%D(:,1)) )
 
-    strength = - bc%MU * normal_getSigma(bc%normal)
+    strength = - bc%MU * eff_sigma
                                          
     T(:,1) = sign( strength, T(:,1))
 
@@ -644,7 +664,10 @@ contains
       bc%MU = swf_mu(bc%swf)
   
      ! superimposed time-weakening
-      if (associated(bc%twf)) bc%MU = min( bc%MU, twf_mu(bc%twf,bc%coord,time%time,bc%D(:,1)) )
+      if (associated(bc%twf)) then
+        bc%MU = min( bc%MU, twf_mu(bc%twf,bc%coord,time%time,bc%D(:,1)) )
+      endif
+
 
    !-- pure time-weakening
     elseif (associated(bc%twf)) then
@@ -652,7 +675,7 @@ contains
     endif
 
    ! Update strength
-    strength = bc%cohesion - bc%MU * normal_getSigma(bc%normal)
+    strength = bc%cohesion - bc%MU * eff_sigma
                                          
    ! Solve for shear stress
     T(:,1) = sign( min(abs(T(:,1)),strength), T(:,1))

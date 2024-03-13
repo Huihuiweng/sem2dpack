@@ -1,0 +1,34 @@
+#----- Some general parameters ----------------
+&GENERAL iexec=1, ngll=5, fmax=3.d0 , W=Inf, ndof=1 ,
+  title = '2D elastic RSF with thermal pressurization', verbose='1111' , ItInfo = 50/ 
+
+#----- Build the mesh ---------------------------
+&MESH_DEF  method = 'CARTESIAN'/
+&MESH_CART xlim=0d3,20d3, zlim=0d3,10d3, nelem=32,16/
+
+#---- Material parameters --------------
+&MATERIAL tag=1, kind='ELAST'  /
+&MAT_ELASTIC rho=2705.d0, cp=5770.d0, cs=3330.d0 /
+
+#----- Boundary conditions ---------------------
+&BC_DEF  tag = 1, kind = 'DYNFLT' /
+&BC_DYNFLT friction='RSF','TP', Tn=-50d6,TtH="ORDER0", V=1e-12 /
+&DIST_ORDER0 xn=2,zn=1 /
+       4d3
+50.0d6   20d6
+&BC_DYNFLT_RSF kind=4, Dc=1e-3, MuS=0.6, a=0.012, b=0.015, Vstar=1e-9, Vc=1e-2, theta=1000000000/
+&BC_DYNFLT_TP  shape='box', T0=483.15d0, nz=63, dz=1d-2, 
+               rhoc=0, K=1.89d-3, alphath=0.7d0, alphahy=2.988d0, 
+               Lambda=0.468d0, W=100d-3, beta=1, deltaD=10d-3, Phi=0 /
+
+&BC_DEF  tag = 2 , kind = 'ABSORB' /
+&BC_DEF  tag = 3 , kind = 'ABSORB' /
+&BC_DEF  tag = 4 , kind = 'DIRNEU' /
+&BC_DIRNEU h='N', v='D' /
+
+#---- Time scheme settings ----------------------
+&TIME  TotalTime=10d0, Courant=0.3d0, kind='newmark' /
+
+#--------- Plots settings ----------------------
+&SNAP_DEF itd=1000, fields ='DVS',bin=F,ps=F /
+&SNAP_PS  vectors=F, interpol=F, DisplayPts=6, ScaleField=0d0   /
