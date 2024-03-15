@@ -14,12 +14,13 @@
 &BC_DEF  tag = 1, kind = 'DYNFLT' /
 &BC_DYNFLT friction='RSF','TP', Tn=-50d6,TtH="ORDER0", V=1e-12 /
 &DIST_ORDER0 xn=2,zn=1 /
-       4d3
-50.0d6   20d6
-&BC_DYNFLT_RSF kind=4, Dc=1e-3, MuS=0.6, a=0.012, b=0.015, Vstar=1e-9, Vc=1e-2, theta=1000000000/
-&BC_DYNFLT_TP  shape='box', T0=483.15d0, nz=63, dz=1d-2, 
-               rhoc=0, K=1.89d-3, alphath=0.7d0, alphahy=2.988d0, 
-               Lambda=0.468d0, W=100d-3, beta=1, deltaD=10d-3, Phi=0 /
+       5d3
+53.0d6   20d6
+&BC_DYNFLT_RSF Dc=1e-3, MuS=0.6, a=0.012, b=0.015, Vstar=1e-9,theta=1000000000/
+&BC_DYNFLT_TP  shape='gaussian', T0=483.15d0, nz=100, dz=1d-3,
+               rhoc=2.7d6, K=0, alphath=0.7d-6, alphahy=1d-6,
+               Lambda=1d6, W=50d-3, beta=1, deltaD=10d-3, Phi=0 /
+
 
 &BC_DEF  tag = 2 , kind = 'ABSORB' /
 &BC_DEF  tag = 3 , kind = 'ABSORB' /
@@ -27,7 +28,7 @@
 &BC_DIRNEU h='N', v='D' /
 
 #---- Time scheme settings ----------------------
-&TIME  TotalTime=10d0, Courant=0.3d0, kind='newmark' /
+&TIME  TotalTime=30d0, Courant=0.3d0, kind='newmark' /
 
 #--------- Plots settings ----------------------
 &SNAP_DEF itd=1000, fields ='DVS',bin=F,ps=F /

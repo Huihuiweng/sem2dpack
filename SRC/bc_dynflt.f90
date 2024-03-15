@@ -621,9 +621,13 @@ contains
 
   ! Update pore pressure and temperature in TP
   if (associated(bc%tp)) then
-    call thermpres_rate(bc%tp,bc%coord,bc%V(:,1),T(:,1),bc%D(:,1))
+    call thermpres_rate(bc%tp,bc%coord,bc%V(:,1),bc%T(:,1)+bc%T0(:,1),bc%D(:,1))
     eff_sigma = eff_sigma + getPorepressure(bc%tp)
+    if(maxval(eff_sigma)>0) then 
+        call IO_abort('Fault opening due to TP!')
+    endif
   endif
+
 
  !DEVEL: maybe need here a second loop to obtain second order
 

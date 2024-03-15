@@ -132,9 +132,9 @@ contains
   return
 
   400 format(5x,'Friction law  . . . . . . . . . . . . . .  = thermal pressurization', &
-            /5x,'  Number of finite difference elements . (nz) = ',A,&
-            /5x,'  Size of finite difference elements . . (dz) = ',A,&
-            /5x,'  Initial temperature. . . . . . . . . . (T0) = ',A,&
+            /5x,'  Number of finite difference elements . (nz) = ',I,&
+            /5x,'  Size of finite difference elements . . (dz) = ',F,&
+            /5x,'  Initial temperature. . . . . . . . . . (T0) = ',F,&
             /5x,'  Volumetric heat capacity  . . . . .  (rhoc) = ',A,&
             /5x,'  Thermal conductivity . . . . . . . . . .(K) = ',A,&
             /5x,'  Thermal diffusivity . . . . . . . (alphath) = ',A,&
@@ -229,7 +229,7 @@ contains
     dt = tp%dtime
 
     ! Use FTCS scheme to stabilize the finite difference solution
-    ! i.e., delta_t < delta_z**2 / (2*alpha)
+    ! i.e., delta_t < delta_z**2 / (2*max(alphahy,alphath))
     FTCS = max(maxval(tp%alphath)*dt/tp%dz**2, maxval(tp%alphahy)*dt/tp%dz**2)
     if (FTCS < 0.2) then
        sub_steps = one
