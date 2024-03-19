@@ -491,8 +491,9 @@ contains
   write(hunit,*) 'NPTS NDAT NSAMP DELT'
   write(hunit,*) onx,NDAT,NSAMP,bc%odt
 
-  temp="Slip:Slip_Rate:Shear_Stress:Normal_Stress:Friction"
+  label="Slip:Slip_Rate:Shear_Stress:Normal_Stress:Friction"
   if (bc%osides) then
+    temp = trim(label)
     if (ndof==1) then
       label = trim(temp)//":D1t:D2t:V1t:V2t"
     else
@@ -500,6 +501,7 @@ contains
     endif
   endif
   if (associated(bc%tp)) then
+    temp  = trim(label)
     label = trim(temp)//":Pore_Pressure:Temperature"
   endif
 
