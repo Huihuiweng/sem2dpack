@@ -20,6 +20,8 @@
 #		data.st0	initial value of shear stress
 #		data.sn0	initial value of normal stress
 #		data.mu0	initial value of friction coefficient
+#		data.P   	pore pressure
+#		data.T   	temperature
 # 
 #		If output on each side of the fault (osides=T):
 #  		data.d1t	displacement on side 1, fault parallel component
@@ -68,6 +70,7 @@ def sem2d_read_fault(model_name,fault_name):
     ndat       = int(lines[1].split()[1])
     data['nt'] = int(lines[1].split()[2])
     data['dt'] = float(lines[1].split()[3])
+    variables  = ((lines[2]).strip()).split(":")
     xyz = []
     for line in lines[4::]:
         xyz.append(line.split())
@@ -93,27 +96,38 @@ def sem2d_read_fault(model_name,fault_name):
 
     raw = np.reshape(raw[:,LENTAG:LENTAG+data['nx']],(int(raw.shape[0]/ndat),ndat, data['nx']));
 
-    # Reformat each field [nx,nt]
-    data['d']  = raw[:,0,:] 
-    data['v']  = raw[:,1,:] 
-    data['st'] = raw[:,2,:] 
-    data['sn'] = raw[:,3,:] 
-    data['mu'] = raw[:,4,:] 
-    if (ndat == 5+4):
-        data['d1t'] = raw[:,5,:] 
-        data['d2t'] = raw[:,6,:] 
-        data['v1t'] = raw[:,7,:] 
-        data['v2t'] = raw[:,8,:] 
-    elif (ndat == 5+4*2):
-        data['d1t'] = raw[:,5,:] 
-        data['d1n'] = raw[:,6,:] 
-        data['d2t'] = raw[:,7,:] 
-        data['d2n'] = raw[:,8,:] 
-        data['v1t'] = raw[:,9,:] 
-        data['v1n'] = raw[:,10,:] 
-        data['v2t'] = raw[:,11,:] 
-        data['v2n'] = raw[:,12,:] 
+    for i in range(len(variables)):
+        variable = variables[i]
+        if variable=='Slip':
+            data['d']  = raw[:,i,:]
+        if variable=='Slip_Rate':
+            data['v']  = raw[:,i,:]
+        if variable=='Shear_Stress':
+            data['st'] = raw[:,i,:]
+        if variable=='Normal_Stress':
+            data['sn'] = raw[:,i,:]
+        if variable=='Friction':
+            data['mu'] = raw[:,i,:]
+        if variable=='D1t':
+            data['d1t'] = raw[:,i,:]
+        if variable=='D2t':
+            data['d2t'] = raw[:,i,:]
+        if variable=='V1t':
+            data['v1t'] = raw[:,i,:]
+        if variable=='V2t':
+            data['v2t']  = raw[:,i,:]
+        if variable=='D1n':
+            data['d1n']  = raw[:,i,:]
+        if variable=='D2n':
+            data['d2n']  = raw[:,i,:]
+        if variable=='V1n':
+            data['v1n'] = raw[:,i,:]
+        if variable=='V2n':
+           data['v2n'] = raw[:,i,:]
+        if variable=='Pore_Pressure':
+           data['P'] = raw[:,i,:]
+        if variable=='Temperature':
+           data['T'] = raw[:,i,:]
 
     return data
-
 

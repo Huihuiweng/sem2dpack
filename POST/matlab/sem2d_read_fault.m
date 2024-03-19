@@ -18,6 +18,8 @@
 %		data.st0	initial value of shear stress
 %		data.sn0	initial value of normal stress
 %		data.mu0	initial value of friction coefficient
+%		data.P   	pore pressure
+%		data.T   	temperature
 % 
 %		If output on each side of the fault (osides=T):
 %  		data.d1t	displacement on side 1, fault parallel component
@@ -57,6 +59,8 @@ if ~exist(hdr,'file')
   return
 end
 [data.nx,ndat,data.nt,data.dt] = textread(hdr,'%n%n%n%n',1,'headerlines',1);
+variables = textread(hdr,'%s',1,'headerlines',2,'delimiter','\n');
+variables = split(variables,':');
 [data.x,data.z] = textread(hdr,'%f%f','headerlines',4);
 
 % Read initial fault data
@@ -75,24 +79,40 @@ fclose(fid);
 %raw = reshape(raw(2:data.nx+1,:),[data.nx ndat data.nt]);
 raw = reshape(raw(LENTAG+1:LENTAG+data.nx,:),data.nx,ndat,[]);
 
+
 % Reformat each field [nx,nt]
-data.d  = squeeze(raw(:,1,:)); 
-data.v  = squeeze(raw(:,2,:)); 
-data.st = squeeze(raw(:,3,:)); 
-data.sn = squeeze(raw(:,4,:)); 
-data.mu  = squeeze(raw(:,5,:)); 
-if ndat==5+4
-  data.d1t  = squeeze(raw(:,6,:)); 
-  data.d2t  = squeeze(raw(:,7,:)); 
-  data.v1t  = squeeze(raw(:,8,:)); 
-  data.v2t  = squeeze(raw(:,9,:)); 
-elseif ndat==5+4*2
-  data.d1t  = squeeze(raw(:,6,:)); 
-  data.d1n  = squeeze(raw(:,7,:)); 
-  data.d2t  = squeeze(raw(:,8,:)); 
-  data.d2n  = squeeze(raw(:,9,:)); 
-  data.v1t  = squeeze(raw(:,10,:)); 
-  data.v1n  = squeeze(raw(:,11,:)); 
-  data.v2t  = squeeze(raw(:,12,:)); 
-  data.v2n  = squeeze(raw(:,13,:)); 
+for i=1:numel(variables)
+    variable = char(variables(i));
+    switch variable
+        case 'Slip'
+            data.d  = squeeze(raw(:,i,:)); 
+        case 'Slip_Rate'
+            data.v  = squeeze(raw(:,i,:)); 
+        case 'Shear_Stress'
+            data.st = squeeze(raw(:,i,:)); 
+        case 'Normal_Stress'
+            data.sn = squeeze(raw(:,i,:)); 
+        case 'Friction'
+            data.mu  = squeeze(raw(:,i,:)); 
+        case 'D1t'
+            data.d1t  = squeeze(raw(:,i,:)); 
+        case 'D2t'
+            data.d2t  = squeeze(raw(:,i,:)); 
+        case 'V1t'
+            data.v1t  = squeeze(raw(:,i,:)); 
+        case 'V2t'
+            data.v2t  = squeeze(raw(:,i,:));
+        case 'D1n'
+            data.d1n  = squeeze(raw(:,i,:)); 
+        case 'D2n'
+            data.d2n  = squeeze(raw(:,i,:)); 
+        case 'V1n'
+            data.v1n  = squeeze(raw(:,i,:)); 
+        case 'V2n'
+           data.v2n  = squeeze(raw(:,i,:)); 
+        case 'Pore_Pressure'
+           data.P = squeeze(raw(:,i,:)); 
+        case 'Temperature'
+           data.T = squeeze(raw(:,i,:));
+    end
 end

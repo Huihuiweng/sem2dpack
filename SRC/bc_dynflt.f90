@@ -256,6 +256,7 @@ contains
   double precision :: dt
   integer :: i,j,k,hunit,npoin,NSAMP,NDAT,ndof,onx,ounit
   character(25) :: oname,hname
+  character(128) :: label,temp
   logical :: two_sides
   
   nullify(Tt0,Tn0,Sxx,Sxy,Sxz,Syz,Szz,Tx,Ty,Tz,nx,nz,V)
@@ -480,7 +481,8 @@ contains
  !
   write(hname,'("Flt",I2.2,"_sem2d")') tags(1)
   NDAT = 5
-  if (bc%osides) NDAT = NDAT + 4*ndof
+  if (bc%osides)         NDAT = NDAT + 4*ndof
+  if (associated(bc%tp)) NDAT = NDAT + 2
   NSAMP = (TIME_getNbTimeSteps(time) -bc%oit)/bc%oitd +1
   hunit = IO_new_unit()
 
@@ -488,15 +490,20 @@ contains
   open(hunit,file=trim(hname)//'.hdr',status='replace')
   write(hunit,*) 'NPTS NDAT NSAMP DELT'
   write(hunit,*) onx,NDAT,NSAMP,bc%odt
-  if (bc%osides) then 
+
+  temp="Slip:Slip_Rate:Shear_Stress:Normal_Stress:Friction"
+  if (bc%osides) then
     if (ndof==1) then
-      write(hunit,'(A)') ' Slip:Slip_Rate:Shear_Stress:Normal_Stress:Friction:D1t:D2t:V1t:V2t'
+      label = trim(temp)//":D1t:D2t:V1t:V2t"
     else
-      write(hunit,'(A)') ' Slip:Slip_Rate:Shear_Stress:Normal_Stress:Friction:D1t:D1n:D2t:D2n:V1t:V1n:V2t:V2n'
+      label = trim(temp)//":D1t:D1n:D2t:D2n:V1t:V1n:V2t:V2n"
     endif
-  else
-    write(hunit,'(A)') ' Slip:Slip_Rate:Shear_Stress:Normal_Stress:Friction'
   endif
+  if (associated(bc%tp)) then
+    label = trim(temp)//":Pore_Pressure:Temperature"
+  endif
+
+  write(hunit,'(A)') trim(label)
   write(hunit,*) 'XPTS ZPTS'
   do i=bc%oix1,bc%oixn,bc%oixd
     write(hunit,*) bc%coord(:,i)
@@ -770,6 +777,7 @@ contains
   type(bc_dynflt_type), intent(inout) :: bc
   integer, intent(in) :: itime
   double precision, dimension(:,:), intent(in) :: d,v
+  double precision, dimension(size(bc%T,1)) :: T,P
 
   write(bc%ou_pot,'(6D24.16)') BC_DYNFLT_potency(bc,d), BC_DYNFLT_potency(bc,v)
 
@@ -789,6 +797,13 @@ contains
     call export_side(bc,get_side(bc,v,2))
   endif
 
+  if (associated(bc%tp)) then
+     P = getPorepressure(bc%tp)
+     T = getTemperature(bc%tp)
+     write(bc%ounit) real( P(bc%oix1:bc%oixn:bc%oixd) )
+     write(bc%ounit) real( T(bc%oix1:bc%oixn:bc%oixd) )
+  endif
+!
   bc%oit = bc%oit + bc%oitd
 
   end subroutine BC_DYNFLT_write

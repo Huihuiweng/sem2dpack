@@ -36,7 +36,7 @@ module bc_dynflt_tp
      type(tp_input_type) :: input
   end type tp_type
 
-  public :: tp_type, tp_read, tp_init, thermpres_rate, getPorepressure 
+  public :: tp_type, tp_read, tp_init, thermpres_rate, getPorepressure, getTemperature 
 
   ! THERMPRES_TYPE is a derived type containing variables related to 
   ! thermal pressurization friction law
@@ -390,6 +390,17 @@ contains
   p = tp%p(1,:)
 
   end function getPorepressure
+
+!--------------------------------
+  function getTemperature(tp) result(T)
+
+  type(tp_type),intent(in)   :: tp
+  real(pr),dimension(:),allocatable :: T
+
+  allocate(T(size(tp%T,2)))
+  T = tp%T(1,:)
+
+  end function getTemperature
 
 
 end module bc_dynflt_tp
