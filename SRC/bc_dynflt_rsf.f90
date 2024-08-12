@@ -23,7 +23,7 @@ module bc_dynflt_rsf
     type(rsf_input_type) :: input
   end type rsf_type
 
-  public :: rsf_type, rsf_read, rsf_init, rsf_mu, rsf_solver, rsf_qs_solver, rsf_timestep, State_to_theta,Theta_to_state
+  public :: rsf_type, rsf_read, rsf_init, rsf_mu, rsf_solver, rsf_qs_solver, rsf_timestep
 
 contains
 
@@ -43,7 +43,8 @@ contains
 !                           as in Ampuero and Ben-Zion (2008)
 !                       2 = logarithmic rate-and-state with aging state law
 !                       3 = logarithmic rate-and-state with slip state law
-!                       4 = Regularized rate-and-state with slip state law, flash heating(Vw as parameter)
+!                       4 = V-shape
+!                       5 = Regularized rate-and-state with slip state law, flash heating(Vw as parameter)
 ! ARG: Dc       [dble] [0.5d0] Critical slip 
 ! ARG: MuS      [dble] [0.6d0] Static friction coefficient
 ! ARG: a        [dble] [0.01d0] Direct effect coefficient
@@ -353,15 +354,16 @@ contains
      ! TPV105 benchmark description eq.3
       Q = Theta_to_state(theta,f)
       mu_lv = f%Vstar + (f%a - f%b) * log(abs(v)/f%Vstar)
-      do i = 1,size(v)
-        if (abs(v(i))<=f%Vw(i)) then
-                mu_ss(i) = mu_lv(i)
-        else 
-                mu_ss(i) = f%fw(i) + (mu_lv(i) - f%fw(i))/((1 + (abs(v(i))/f%Vw(i))**8)**(1.0/8.0))
-        endif
-      enddo
+      !do i = 1,size(v)
+      !  if (abs(v(i))<=f%Vw(i)) then
+      !          mu_ss(i) = mu_lv(i)
+      !  else 
+      !          mu_ss(i) = f%fw(i) + (mu_lv(i) - f%fw(i))/((1 + (abs(v(i))/f%Vw(i))**8)**(1.0/8.0))
+      !  endif
+      !enddo
+      mu_ss = mu_lv
       Q_ss = f%a * log((2 * f%Vstar / abs(v)) * sinh(mu_ss / f%a))
-      dQ = abs(v)/f%Dc * (Q - Q_ss)
+      dQ = abs(v)/f%Dc * (Q_ss - Q)
       Q_new = Q + dQ * f%dt
       theta_new = Theta_to_state(Q_new,f) 
   end select
@@ -407,7 +409,7 @@ contains
          endif
       enddo
  
-    case(2,3,4) 
+    case(2,3,4,5) 
      ! "Aging Law and Slip Law"
      ! Find each element's velocity:
      do i=1,size(tau_stick)
@@ -608,7 +610,7 @@ subroutine nr_fric_func_tau(tau, func_tau, dfunc_dtau, v, f, theta, it, tau_stic
       !  Kaneko et al. (2008) Eq. 15 (regularize at v=0 as per Lapusta et al. (2000))
       !  solved in terms of v
   select case(f%kind)
-    case(2,3)
+    case(2,3,5)
       tmp = f%mus(it) +f%b(it)*log( f%Vstar(it)*theta/f%Dc(it) )
       tmp = 2d0*f%Vstar(it)*exp(-tmp/f%a(it))
       v = sinh(tau/(-sigma*f%a(it)))*tmp
