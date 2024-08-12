@@ -168,27 +168,6 @@ contains
   end subroutine rsf_init
 
 !=====================================================================
- ! add function to transfer state 
-  function Theta_to_state(theta,f) result(Q)
-  double precision, dimension(:), intent(in) :: theta
-  type(rsf_type), intent(in) :: f
-  double precision :: Q(size(theta))
-
-  Q=f%mus + f%b * log(f%Vstar * theta / f%Dc) 
-
-  end function Theta_to_state
-
-  function State_to_theta(state,f) result(theta)
-  double precision, dimension(:), intent(in) :: state
-  type(rsf_type), intent(in) :: f
-  double precision :: theta(size(state))
-
-  theta= (f%Dc / f%Vstar)*exp((state - f%mus)/f%b)
-
-  end function State_to_theta
-
-    
-
 ! Friction coefficient
   function rsf_mu(v,f) result(mu)
 
@@ -209,7 +188,7 @@ contains
       mu = f%a*asinh(abs(v)/(2d0*f%Vstar)*exp((f%mus+f%b*log(f%Vc*f%theta/f%Dc+1))/f%a))
     case(5)
       ! TPV105 benchmark description eq.2
-      Q = Theta_to_State(f%theta,f)
+      Q=f%mus + f%b * log(f%Vstar * f%theta / f%Dc)
       mu = f%a*asinh(abs(v)/(2d0*f%Vstar)*exp(Q/f%a))
   end select
 
@@ -352,20 +331,20 @@ contains
       theta_new = theta_new *(theta/theta_new)**exp(-f%dt/theta_new)
     case(5)
      ! TPV105 benchmark description eq.3
-      Q = Theta_to_state(theta,f)
-      mu_lv = f%Vstar + (f%a - f%b) * log(abs(v)/f%Vstar)
-      !do i = 1,size(v)
-      !  if (abs(v(i))<=f%Vw(i)) then
-      !          mu_ss(i) = mu_lv(i)
-      !  else 
-      !          mu_ss(i) = f%fw(i) + (mu_lv(i) - f%fw(i))/((1 + (abs(v(i))/f%Vw(i))**8)**(1.0/8.0))
-      !  endif
-      !enddo
-      mu_ss = mu_lv
+      Q=f%mus + f%b * log(f%Vstar * theta / f%Dc)
+      mu_lv = f%mus + (f%a - f%b) * log(abs(v)/f%Vstar)
+      do i = 1,size(v)
+        if (abs(v(i))<=f%Vw(i)) then
+                mu_ss(i) = mu_lv(i)
+        else 
+                mu_ss(i) = f%fw(i) + (mu_lv(i) - f%fw(i))/((1 + (abs(v(i))/f%Vw(i))**8)**(1.0/8.0))
+        endif
+      enddo
       Q_ss = f%a * log((2 * f%Vstar / abs(v)) * sinh(mu_ss / f%a))
       dQ = abs(v)/f%Dc * (Q_ss - Q)
       Q_new = Q + dQ * f%dt
-      theta_new = Theta_to_state(Q_new,f) 
+      theta_new = (f%Dc / f%Vstar)*exp((Q_new - f%mus)/f%b) 
+
   end select
 
   end function rsf_update_theta
