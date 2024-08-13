@@ -341,8 +341,11 @@ contains
         endif
       enddo
       Q_ss = f%a * log((2 * f%Vstar / abs(v)) * sinh(mu_ss / f%a))
-      dQ = abs(v)/f%Dc * (Q_ss - Q)
-      Q_new = Q + dQ * f%dt
+      Q_new = Q_ss + (Q - Q_ss)*exp(- abs(v) * f%dt / f%Dc)  ! Kaneko, 2008  eq.20
+
+      !dQ = abs(v)/f%Dc * (Q_ss - Q) ! kaneko, 2008 eq.24
+      !Q_new = Q + dQ * f%dt
+      
       theta_new = (f%Dc / f%Vstar)*exp((Q_new - f%mus)/f%b) 
 
   end select
