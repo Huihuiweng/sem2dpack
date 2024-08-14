@@ -60,11 +60,12 @@ distribution_cd.o: distribution_general.o echo.o stdio.o utils.o
 distribution_gaussian.o: stdio.o
 distribution_general.o: distribution_gaussian.o distribution_gradient.o \
 	distribution_hete1.o distribution_linear.o distribution_order0.o \
-	distribution_pwconr.o distribution_spline.o stdio.o
+	distribution_pwconr.o distribution_spline.o stdio.o distribution_boxer.o 
 distribution_gradient.o: stdio.o utils.o
 distribution_hete1.o: constants.o stdio.o
 distribution_linear.o: stdio.o utils.o
 distribution_pwconr.o: stdio.o
+distribution_boxer.o: stdio.o
 distribution_spline.o: stdio.o utils.o
 energy.o: fields.o mat_gen.o prop_mat.o spec_grid.o stdio.o
 fem_grid.o: bnd_grid.o constants.o elem_q4.o elem_q8h.o elem_q9.o \
