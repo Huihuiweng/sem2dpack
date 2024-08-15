@@ -34,7 +34,7 @@ module bc_dynflt
     type(bc_dynflt_input_type) :: input
    ! for outputs:
     double precision :: ot1,odt
-    integer :: oit,oitd,ounit,oix1,oixn,oixd, ou_pot
+    integer :: oit,oitd,ounit,oix1,oixn,oixd,ou_pot,unit_pressure,unit_temperature
     logical :: osides
   end type bc_dynflt_type
 
@@ -454,6 +454,16 @@ contains
   enddo
   close(ounit)
 
+ ! Add P(nz,nx) and T(nz,nx) in new files
+  write(oname,'("Flt",I2.2,"_pressure_sem2d.dat")') tags(1)
+  bc%unit_pressure = IO_new_unit()
+  open(bc%unit_pressure,file=oname,status='replace',form='unformatted')
+  
+  write(oname,'("Flt",I2.2,"_tempera_sem2d.dat")') tags(1)
+  bc%unit_temperature = IO_new_unit()
+  open(bc%unit_temperature,file=oname,status='replace',form='unformatted')
+
+
  ! adjust output timestep to the nearest multiple of dt:
   bc%oitd = max(1,nint(bc%odt/dt))
   bc%odt = dt * dble(bc%oitd)
@@ -596,6 +606,7 @@ contains
   double precision, dimension(bc%npoin,2) :: T
   double precision, dimension(bc%npoin,size(V,2)) :: dD,dV,dA
   integer :: ndof
+  double precision, dimension(:,:), allocatable :: P
 
   ndof = size(MxA,2)
 
@@ -631,7 +642,9 @@ contains
   ! Update pore pressure and temperature in TP
   if (associated(bc%tp)) then
     call thermpres_rate(bc%tp,bc%coord,bc%V(:,1),bc%T(:,1)+bc%T0(:,1),bc%D(:,1))
-    eff_sigma = eff_sigma + getPorepressure(bc%tp)
+    P = getPorepressure(bc%tp)
+    eff_sigma = eff_sigma + P(1,:)
+   !eff_sigma = eff_sigma + getPorepressure(bc%tp)
     if(maxval(eff_sigma)>0) then 
         call IO_abort('Fault opening due to TP!')
     endif
@@ -779,7 +792,9 @@ contains
   type(bc_dynflt_type), intent(inout) :: bc
   integer, intent(in) :: itime
   double precision, dimension(:,:), intent(in) :: d,v
-  double precision, dimension(size(bc%T,1)) :: T,P
+  !double precision, dimension(size(bc%T,1)) :: T,P
+  double precision, dimension(:,:), allocatable :: T,P
+  integer(selected_int_kind(9)) :: nz
 
   write(bc%ou_pot,'(6D24.16)') BC_DYNFLT_potency(bc,d), BC_DYNFLT_potency(bc,v)
 
@@ -802,8 +817,13 @@ contains
   if (associated(bc%tp)) then
      P = getPorepressure(bc%tp)
      T = getTemperature(bc%tp)
-     write(bc%ounit) real( P(bc%oix1:bc%oixn:bc%oixd) )
-     write(bc%ounit) real( T(bc%oix1:bc%oixn:bc%oixd) )
+     nz = size(P,1)
+     write(bc%ounit) real( P(1,bc%oix1:bc%oixn:bc%oixd) ) ! 1:2001:1
+     write(bc%ounit) real( T(1,bc%oix1:bc%oixn:bc%oixd) )
+     if (bc%tp%tp_file) then
+        write(bc%unit_pressure) real( P(1:nz:1,bc%oix1:bc%oixn:bc%oixd) )
+        write(bc%unit_temperature) real( T(1:nz:1,bc%oix1:bc%oixn:bc%oixd) )
+     endif
   endif
 !
   bc%oit = bc%oit + bc%oitd

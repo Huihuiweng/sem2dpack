@@ -10,7 +10,7 @@ module bc_dynflt_rsf
   private
 
   type rsf_input_type
-    type(cd_type) :: dc, mus, a, b, Vstar, theta, Vc
+    type(cd_type) :: dc, mus, a, b, Vstar, theta, Vc, fw, Vw
   end type rsf_input_type
 
   type rsf_type
@@ -18,7 +18,7 @@ module bc_dynflt_rsf
     integer :: kind
     double precision, dimension(:), pointer :: dc=>null(), mus=>null(), a=>null(), b=>null(), &
                                                Vstar=>null(), theta=>null(), Vc=>null(), &
-                                               Tc=>null(), coeft=>null()
+                                               Tc=>null(), coeft=>null(), fw=>null(), Vw=>null()
     double precision :: dt
     type(rsf_input_type) :: input
   end type rsf_type
@@ -34,13 +34,17 @@ contains
 ! GROUP  : DYNAMIC_FAULT
 ! PURPOSE: Velocity and state dependent friction
 ! SYNTAX : &BC_DYNFLT_RSF kind, Dc | DcH, Mus | MusH , 
-!                         a | aH, b | bH, Vstar | VstarH /
+!                         a | aH, b | bH, Vstar | VstarH , Vw | VwH/
 !          followed by &DIST_XXX blocks (from the DISTRIBUTIONS group) for
 !          arguments with suffix H, if present, in the order listed above.
 !
 ! ARG: kind     [int] [1] Type of rate-and-state friction law:
 !                       1 = strong velocity-weakening at high speed
 !                           as in Ampuero and Ben-Zion (2008)
+!                       2 = logarithmic rate-and-state with aging state law
+!                       3 = logarithmic rate-and-state with slip state law
+!                       4 = V-shape
+!                       5 = Regularized rate-and-state with slip state law, flash heating(Vw as parameter)
 ! ARG: Dc       [dble] [0.5d0] Critical slip 
 ! ARG: MuS      [dble] [0.6d0] Static friction coefficient
 ! ARG: a        [dble] [0.01d0] Direct effect coefficient
@@ -50,9 +54,6 @@ contains
 !
 ! END INPUT BLOCK
 
-! not implement yet:
-!                       2 = logarithmic rate-and-state with aging state law
-!                       3 = logarithmic rate-and-state with slip state law
 
 ! Read parameters from input file
   subroutine rsf_read(rsf,iin)
@@ -62,12 +63,13 @@ contains
   type(rsf_type), intent(out) :: rsf
   integer, intent(in) :: iin
 
-  double precision :: Dc,MuS,a,b,Vstar,theta,Vc
-  character(20) :: DcH,MuSH,aH,bH,VstarH,thetaH,VcH
+  double precision :: Dc,MuS,a,b,Vstar,theta,Vc,Vw,fw
+  character(20) :: DcH,MuSH,aH,bH,VstarH,thetaH,VcH,VwH,fwH
   integer :: kind
   character(25) :: kind_txt
 
-  NAMELIST / BC_DYNFLT_RSF / kind,Dc,MuS,a,b,Vstar,theta,Vc,DcH,MuSH,aH,bH,VstarH,thetaH,VcH
+  NAMELIST / BC_DYNFLT_RSF / kind,Dc,MuS,a,b,Vstar,theta,Vc,Vw,fw,DcH,MuSH,aH,bH,VstarH,thetaH,VcH, &
+                             VwH,fwH
 
   kind = 1
   Dc = 0.5d0
@@ -76,24 +78,30 @@ contains
   b = 0.02d0
   Vstar = 1d0
   theta = 0d0
-  Vc    = 1d-6;
+  Vc    = 1d-6
+  Vw = 0.1
+  fw = 0.2;
   DcH = ''
   MuSH = ''
   aH = ''
   bH = ''
   VstarH = ''
   thetaH = ''
-  VcH = '';
+  VcH = ''
+  VwH = ''
+  fwH = ''
 
   read(iin,BC_DYNFLT_RSF,END=300)
 300 continue
 
+
   
   select case (kind)
     case(1); kind_txt = 'Strong velocity-weakening'
-    case(2); kind_txt = 'Classical with aging law'
-    case(3); kind_txt = 'Classical with slip law'
+    case(2); kind_txt = 'Regularied with aging law'
+    case(3); kind_txt = 'Regularied with slip law'
     case(4); kind_txt = 'V-shape RSF with aging law'
+    case(5); kind_txt = 'Regularied with slip law, flash heating'
     case default; call IO_abort('BC_DYNFLT_RSF: invalid kind')
   end select
   rsf%kind = kind
@@ -106,8 +114,11 @@ contains
   call DIST_CD_Read(rsf%input%Vstar,Vstar,VstarH,iin,VstarH)
   call DIST_CD_Read(rsf%input%theta,theta,thetaH,iin,thetaH)
   call DIST_CD_Read(rsf%input%Vc,Vc,VcH,iin,VcH)
+  call DIST_CD_Read(rsf%input%Vw,Vw,VwH,iin,VwH)
+  call DIST_CD_Read(rsf%input%fw,fw,fwH,iin,fwH)
 
-  if (echo_input) write(iout,400) kind_txt,DcH,MuSH,aH,bH,VstarH,thetaH,VcH
+
+  if (echo_input) write(iout,400) kind_txt,DcH,MuSH,aH,bH,VstarH,thetaH,VcH,VwH,fwH
 
   return
 
@@ -120,7 +131,10 @@ contains
             /5x,'  Evolution effect coefficient  . . . .(b) = ',A,&
             /5x,'  Velocity scale  . . . . . . . . .(Vstar) = ',A,&
             /5x,'  State variable  . . . . . . . . .(theta) = ',A,&
-            /5x,'  Cutoff sliprate . . . . . . . . .  .(Vc) = ',A)
+            /5x,'  Cutoff sliprate . . . . . . . . ....(Vc) = ',A,&
+            /5x,'  Weakening rate  . . . . . . . . ....(Vw) = ',A,&
+            /5x,'  Weakening friction coefficient. . . (fw) = ',A)
+
 
   end subroutine rsf_read
 
@@ -140,6 +154,9 @@ contains
   call DIST_CD_Init(rsf%input%Vstar,coord,rsf%Vstar)
   call DIST_CD_Init(rsf%input%theta,coord,rsf%theta)
   call DIST_CD_Init(rsf%input%Vc,coord,rsf%Vc)
+  call DIST_CD_Init(rsf%input%Vw,coord,rsf%Vw)
+  call DIST_CD_Init(rsf%input%fw,coord,rsf%fw)
+
 
   n = size(coord,2)
   allocate(rsf%Tc(n))
@@ -156,7 +173,7 @@ contains
 
   double precision, dimension(:), intent(in) :: v
   type(rsf_type), intent(in) :: f
-  double precision :: mu(size(v))
+  double precision :: mu(size(v)), Q(size(f%theta))
 
   select case(f%kind)
     case(1) 
@@ -169,6 +186,10 @@ contains
     case(4)
       !mu = f%mus +f%a*log(abs(v)/f%Vstar) + f%b*log(f%theta*f%Vc/f%Dc + 1) 
       mu = f%a*asinh(abs(v)/(2d0*f%Vstar)*exp((f%mus+f%b*log(f%Vc*f%theta/f%Dc+1))/f%a))
+    case(5)
+      ! TPV105 benchmark description eq.2
+      Q=f%mus + f%b * log(f%Vstar * f%theta / f%Dc)
+      mu = f%a*asinh(abs(v)/(2d0*f%Vstar)*exp(Q/f%a))
   end select
 
   end function rsf_mu
@@ -224,6 +245,15 @@ contains
 
   double precision, dimension(size(v)) :: v_new,theta_new
 
+ ! write(*,*) 'theta = ', f%theta
+ ! write(*,*) 'Vw = ', f%Vw
+ ! write(*,*) 'fw = ', f%fw
+ ! write(*,*) 'Dc = ', f%Dc
+ ! write(*,*) 'a = ', f%a
+ ! write(*,*) 'b = ', f%b
+ ! write(*,*) 'Vstar = ', f%Vstar
+ ! write(*,*) 'v =',v
+ ! write(*,*) 'Size',size(v)
 
   ! First pass: 
   theta_new = rsf_update_theta(f%theta,v,f)
@@ -264,8 +294,9 @@ contains
 
   double precision, dimension(:), intent(in) :: v,theta
   type(rsf_type), intent(in) :: f
-  double precision, dimension(size(v)) :: theta_new, x, exp_x
-  integer :: it
+  double precision, dimension(size(v)) :: theta_new, x, exp_x, mu_lv, mu_ss, Q_ss, Q_new, dQ
+  double precision, dimension(size(theta)) :: Q
+  integer :: it, i
 
   select case(f%kind)
     case(1) 
@@ -298,6 +329,24 @@ contains
      ! theta_new = Dc/v *(theta*v/Dc)**exp(-v*dt/Dc)
       theta_new = f%Dc/abs(v)
       theta_new = theta_new *(theta/theta_new)**exp(-f%dt/theta_new)
+    case(5)
+     ! TPV105 benchmark description eq.3
+      Q=f%mus + f%b * log(f%Vstar * theta / f%Dc)
+      mu_lv = f%mus + (f%a - f%b) * log(abs(v)/f%Vstar)
+      do i = 1,size(v)
+        if (abs(v(i))<=f%Vw(i)) then
+                mu_ss(i) = mu_lv(i)
+        else 
+                mu_ss(i) = f%fw(i) + (mu_lv(i) - f%fw(i))/((1 + (abs(v(i))/f%Vw(i))**8)**(1.0/8.0))
+        endif
+      enddo
+      Q_ss = f%a * log((2 * f%Vstar / abs(v)) * sinh(mu_ss / f%a))
+      Q_new = Q_ss + (Q - Q_ss)*exp(- abs(v) * f%dt / f%Dc)  ! Kaneko, 2008  eq.20
+
+      !dQ = abs(v)/f%Dc * (Q_ss - Q) ! kaneko, 2008 eq.24
+      !Q_new = Q + dQ * f%dt
+      
+      theta_new = (f%Dc / f%Vstar)*exp((Q_new - f%mus)/f%b) 
 
   end select
 
@@ -342,7 +391,7 @@ contains
          endif
       enddo
  
-    case(2,3,4) 
+    case(2,3,4,5) 
      ! "Aging Law and Slip Law"
      ! Find each element's velocity:
      do i=1,size(tau_stick)
@@ -543,7 +592,7 @@ subroutine nr_fric_func_tau(tau, func_tau, dfunc_dtau, v, f, theta, it, tau_stic
       !  Kaneko et al. (2008) Eq. 15 (regularize at v=0 as per Lapusta et al. (2000))
       !  solved in terms of v
   select case(f%kind)
-    case(2,3)
+    case(2,3,5)
       tmp = f%mus(it) +f%b(it)*log( f%Vstar(it)*theta/f%Dc(it) )
       tmp = 2d0*f%Vstar(it)*exp(-tmp/f%a(it))
       v = sinh(tau/(-sigma*f%a(it)))*tmp
