@@ -7,6 +7,7 @@ module bc_dynflt
   use bc_dynflt_rsf
   use bc_dynflt_twf
   use bc_dynflt_tp
+  use bc_dynflt_load
 
   implicit none
   private
@@ -28,7 +29,8 @@ module bc_dynflt
     type(rsf_type), pointer :: rsf => null()
     type(twf_type), pointer :: twf => null()
     type(tp_type),  pointer :: tp  => null()
-    logical :: allow_opening
+    type(load_type),  pointer :: ld  => null() 
+    logical :: allow_opening, load
     type(normal_type) :: normal
     type(bnd_grid_type), pointer :: bc1 => null(), bc2 => null()
     type(bc_dynflt_input_type) :: input
@@ -63,6 +65,7 @@ contains
 !                  TWF = time weakening friction
 !                  RSF = rate and state dependent friction
 !                  TP  = thermal pressurization
+!                  LD  = Load initial perturbations
 !                Some friction types can be combined. E.g. to set the 
 !                friction coefficient to the minimum of SWF and TWF, set 
 !                  friction='SWF','TWF'
@@ -90,6 +93,8 @@ contains
 ! ARG: osides   [log] [F] Export displacement and velocities on each side
 !                of the fault
 ! ARG: V        [dble] [1d-12] Initial velocity (needed for RSF)
+! 
+! ARG: load     [log][F] Perturbations on fault
 !
 ! NOTE: The initial stress can be set as a stress tensor (Sxx,etc), as
 !       initial tractions on the fault plane (Tn and Tt) or as the sum of both.
@@ -112,12 +117,12 @@ contains
                   ,dt_txt,oxi2_txt, cohesionH, VH
   character(3) :: friction(3)
   integer :: i,oxi(3)
-  logical :: opening,osides
+  logical :: opening,osides,load
 
   NAMELIST / BC_DYNFLT /  Tt,Tn,Sxx,Sxy,Sxz,Syz,Szz &
                          ,TtH,TnH,SxxH,SxyH,SxzH,SyzH,SzzH &
                          ,ot1,otd,oxi,osides, friction, opening &
-                         ,cohesion, cohesionH, V, VH
+                         ,cohesion, cohesionH, V, VH, load
 
   Tt = 0d0
   Tn = 0d0
@@ -153,6 +158,7 @@ contains
   cohesionH = ''
   
   opening = .true.
+  load = .false.
 
   read(iin,BC_DYNFLT,END=100)
 
@@ -174,6 +180,7 @@ contains
   call DIST_CD_Read(bc%input%V,V,VH,iin,VH)
 
   bc%allow_opening = opening
+  bc%load = load
 
   if (echo_input) then
     if (otd==0d0) then
@@ -187,7 +194,7 @@ contains
       write(oxi2_txt,'(I0)') oxi(2)
     endif
     write(iout,200) TnH,TtH,SxxH,SxyH,SxzH,SyzH,SzzH,VH, & 
-                    cohesionH,opening,ot1,dt_txt,oxi(1),oxi2_txt,oxi(3),osides
+                    cohesionH,opening,ot1,dt_txt,oxi(1),oxi2_txt,oxi(3),osides,load
   endif
 
   do i=1,3,1
@@ -210,6 +217,11 @@ contains
     end select
   enddo
 
+  if(bc%load == .true.) then
+        allocate(bc%ld)
+        call ld_read(bc%ld,iin)
+  endif
+
   call normal_read(bc%normal,iin)
 
   return
@@ -229,7 +241,9 @@ contains
             /5x,'       first node . . . . . . . . (oxi(1)) = ',I0,&
             /5x,'       last node  . . . . . . . . (oxi(2)) = ',A,&
             /5x,'       node stride  . . . . . . . (oxi(3)) = ',I0,&
-            /5x,'       data from each fault side. (osides) = ',L1)
+            /5x,'       data from each fault side. (osides) = ',L1, &
+            /5x,'Load  perturbations . . . . . . .(loading) = ',L1 )
+
 
   end subroutine BC_DYNFLT_read
 
@@ -446,6 +460,9 @@ contains
   bc%ou_pot = IO_new_unit()
   open(bc%ou_pot,file=oname,status='replace')
 
+  ! T0(:,1) - initial shear stress
+  ! T0(:,2) - initial normal stress
+  ! bc%Mu   - initial friction parameter
   write(oname,'("Flt",I2.2,"_init_sem2d.tab")') tags(1)
   ounit = IO_new_unit()
   open(ounit,file=oname,status='replace')
@@ -630,6 +647,9 @@ contains
   if (.not.associated(bc%bc2) .or. ndof==1) T(:,2)=0d0 
 
 ! add initial stress
+! T_old = update_T 
+! T0 = initial Stress
+  write(*,*) 'T_in =', T(1:30,1)
   T = T + bc%T0
 
 ! Solve for normal stress (negative is compressive)
@@ -655,6 +675,14 @@ contains
 
  ! Update friction and shear stress
  !WARNING: during opening the friction state variable should not evolve
+ ! Load perturbations on Tt
+ if(associated(bc%ld)) then
+         !write(*,*) 'T_in =', T(1:30,1)
+         T(:,1) = load_form(bc%ld, T(:,1), bc%coord, time%time)
+         !write(*,*) 'T_out =', T(1:30,1)
+
+ endif
+
 
  !-- velocity and state dependent friction 
   if (associated(bc%rsf)) then
@@ -670,10 +698,10 @@ contains
 
    ! superimposed time-weakening
     if (associated(bc%twf)) bc%MU = min( bc%MU, twf_mu(bc%twf,bc%coord,time%time,bc%D(:,1)) )
-
     strength = - bc%MU * eff_sigma
-                                         
+
     T(:,1) = sign( strength, T(:,1))
+
 
   else
    !-- slip weakening
@@ -710,7 +738,8 @@ contains
 
 ! Subtract initial stress
   T = T - bc%T0
-
+  
+  write(*,*) 'T_out =', T(1:30,1)
 ! Save tractions
   bc%T = T
 
