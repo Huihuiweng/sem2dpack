@@ -34,6 +34,8 @@ module bc_dynflt
     type(normal_type) :: normal
     type(bnd_grid_type), pointer :: bc1 => null(), bc2 => null()
     type(bc_dynflt_input_type) :: input
+    !for Load:
+    double precision, dimension(:), pointer :: T00=>null()
    ! for outputs:
     double precision :: ot1,odt
     integer :: oit,oitd,ounit,oix1,oixn,oixd,ou_pot,unit_pressure,unit_temperature
@@ -411,11 +413,13 @@ contains
   allocate(Tx(npoin))
   allocate(Ty(npoin))
   allocate(Tz(npoin))
+  allocate(bc%T00(npoin))
   Tx = Sxx*nx + Sxz*nz
   Ty = Sxy*nx + Syz*nz
   Tz = Sxz*nx + Szz*nz
   if (ndof==1) then ! SH
     bc%T0(:,1) = Tt0 + Ty
+    bc%T00 = Tt0 + Ty
   else ! P-SV
     bc%T0(:,1) = Tt0 + Tx*nz - Tz*nx
   endif 
@@ -510,6 +514,7 @@ contains
   NDAT = 5
   if (bc%osides)         NDAT = NDAT + 4*ndof
   if (associated(bc%tp)) NDAT = NDAT + 2
+  if (associated(bc%ld)) NDAT = NDAT + 1
   NSAMP = (TIME_getNbTimeSteps(time) -bc%oit)/bc%oitd +1
   hunit = IO_new_unit()
 
@@ -530,6 +535,10 @@ contains
   if (associated(bc%tp)) then
     temp  = trim(label)
     label = trim(temp)//":Pore_Pressure:Temperature"
+  endif
+  if (associated(bc%ld)) then
+    temp  = trim(label)
+    label = trim(temp)//":Load_Stress"   
   endif
 
   write(hunit,'(A)') trim(label)
@@ -648,8 +657,11 @@ contains
 
 ! add initial stress
 ! T_old = update_T 
-! T0 = initial Stress
-  write(*,*) 'T_in =', T(1:30,1)
+! T0 = initial Stress (where pertubations add)
+  
+  if(associated(bc%ld)) then  
+       bc%T0(:,1) = load_form(bc%ld, bc%T00, bc%coord, time%time)
+  endif
   T = T + bc%T0
 
 ! Solve for normal stress (negative is compressive)
@@ -675,14 +687,6 @@ contains
 
  ! Update friction and shear stress
  !WARNING: during opening the friction state variable should not evolve
- ! Load perturbations on Tt
- if(associated(bc%ld)) then
-         !write(*,*) 'T_in =', T(1:30,1)
-         T(:,1) = load_form(bc%ld, T(:,1), bc%coord, time%time)
-         !write(*,*) 'T_out =', T(1:30,1)
-
- endif
-
 
  !-- velocity and state dependent friction 
   if (associated(bc%rsf)) then
@@ -739,7 +743,6 @@ contains
 ! Subtract initial stress
   T = T - bc%T0
   
-  write(*,*) 'T_out =', T(1:30,1)
 ! Save tractions
   bc%T = T
 
@@ -815,7 +818,10 @@ contains
 ! 3: Shear stress 
 ! 4: Normal stress 
 ! 5: Friction coefficient
-!
+! Followings are Optioal
+! 6: Pore pressure
+! 7: Temperature
+! 8: Laod stress
   subroutine BC_DYNFLT_write(bc,itime,d,v)
 
   type(bc_dynflt_type), intent(inout) :: bc
@@ -855,6 +861,11 @@ contains
      endif
   endif
 !
+ if(associated(bc%ld)) then
+
+   write(bc%ounit) real( bc%T0(bc%oix1:bc%oixn:bc%oixd,1) )
+ endif
+
   bc%oit = bc%oit + bc%oitd
 
   end subroutine BC_DYNFLT_write
