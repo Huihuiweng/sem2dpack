@@ -8,7 +8,7 @@ module bc_dynflt
   use bc_dynflt_twf
   use bc_dynflt_tp
   use bc_dynflt_load
-
+  
   implicit none
   private
 
@@ -422,6 +422,7 @@ contains
     bc%T00 = Tt0 + Ty
   else ! P-SV
     bc%T0(:,1) = Tt0 + Tx*nz - Tz*nx
+    bc%T00 = Tt0 + Tx*nz - Tz*nx
   endif 
   bc%T0(:,2) = Tn0 + Tx*nx + Tz*nz
   deallocate(Tt0,Tn0,Sxx,Sxy,Sxz,Syz,Szz,Tx,Ty,Tz)
@@ -515,6 +516,7 @@ contains
   if (bc%osides)         NDAT = NDAT + 4*ndof
   if (associated(bc%tp)) NDAT = NDAT + 2
   if (associated(bc%ld)) NDAT = NDAT + 1
+  if (associated(bc%rsf)) NDAT = NDAT + 1
   NSAMP = (TIME_getNbTimeSteps(time) -bc%oit)/bc%oitd +1
   hunit = IO_new_unit()
 
@@ -539,6 +541,11 @@ contains
   if (associated(bc%ld)) then
     temp  = trim(label)
     label = trim(temp)//":Load_Stress"   
+  endif
+  
+  if (associated(bc%rsf)) then ! for scec benchmark
+        temp = trim(label)
+        label = trim(temp)//":State_value"
   endif
 
   write(hunit,'(A)') trim(label)
@@ -696,17 +703,14 @@ contains
       call rsf_solver(bc%V(:,1), T(:,1), eff_sigma, bc%rsf, bc%Z(:,1))
     endif
     bc%MU = rsf_mu(bc%V(:,1), bc%rsf)
-                                        
+
    !DEVEL combined with time-weakening
    !DEVEL WARNING: slip rate is updated later, but theta is not
 
    ! superimposed time-weakening
     if (associated(bc%twf)) bc%MU = min( bc%MU, twf_mu(bc%twf,bc%coord,time%time,bc%D(:,1)) )
     strength = - bc%MU * eff_sigma
-
     T(:,1) = sign( strength, T(:,1))
-
-
   else
    !-- slip weakening
     if (associated(bc%swf)) then
@@ -739,10 +743,10 @@ contains
     T(:,1) = sign( min(abs(T(:,1)),strength), T(:,1))
                                   
   endif
+  
 
 ! Subtract initial stress
   T = T - bc%T0
-  
 ! Save tractions
   bc%T = T
 
@@ -757,7 +761,6 @@ contains
   dA = dA - bc%T(:,1:ndof)/(bc%Z*bc%CoefA2V)
   bc%D = dD + bc%CoefA2D*dA
   bc%V = dV + bc%CoefA2V*dA
-
   end subroutine BC_DYNFLT_apply
 
 !---------------------------------------------------------------------
@@ -822,6 +825,7 @@ contains
 ! 6: Pore pressure
 ! 7: Temperature
 ! 8: Laod stress
+! 9: State value
   subroutine BC_DYNFLT_write(bc,itime,d,v)
 
   type(bc_dynflt_type), intent(inout) :: bc
@@ -829,6 +833,7 @@ contains
   double precision, dimension(:,:), intent(in) :: d,v
   !double precision, dimension(size(bc%T,1)) :: T,P
   double precision, dimension(:,:), allocatable :: T,P
+  double precision, dimension(:), allocatable :: theta
   integer(selected_int_kind(9)) :: nz
 
   write(bc%ou_pot,'(6D24.16)') BC_DYNFLT_potency(bc,d), BC_DYNFLT_potency(bc,v)
@@ -862,10 +867,13 @@ contains
   endif
 !
  if(associated(bc%ld)) then
-
    write(bc%ounit) real( bc%T0(bc%oix1:bc%oixn:bc%oixd,1) )
  endif
 
+ if(associated(bc%rsf)) then      
+   theta = get_theta(bc%rsf)
+   write(bc%ounit) real( theta(bc%oix1:bc%oixn:bc%oixd) ) ! if  kind = 5, theta is Theta (regularized)
+ endif
   bc%oit = bc%oit + bc%oitd
 
   end subroutine BC_DYNFLT_write

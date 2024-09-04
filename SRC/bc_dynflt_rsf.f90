@@ -23,7 +23,7 @@ module bc_dynflt_rsf
     type(rsf_input_type) :: input
   end type rsf_type
 
-  public :: rsf_type, rsf_read, rsf_init, rsf_mu, rsf_solver, rsf_qs_solver, rsf_timestep
+  public :: rsf_type, rsf_read, rsf_init, rsf_mu, rsf_solver, rsf_qs_solver, rsf_timestep, get_theta
 
 contains
 
@@ -50,7 +50,7 @@ contains
 ! ARG: a        [dble] [0.01d0] Direct effect coefficient
 ! ARG: b        [dble] [0.02d0] Evolution effect coefficient
 ! ARG: Vstar    [dble] [1d0] Characteristic or reference slip velocity
-! ARG: theta    [dble] [1d0] State variable
+! ARG: theta    [dble] [1d0] State variable (if kind = 5, theta is Phi)
 !
 ! END INPUT BLOCK
 
@@ -188,7 +188,8 @@ contains
       mu = f%a*asinh(abs(v)/(2d0*f%Vstar)*exp((f%mus+f%b*log(f%Vc*f%theta/f%Dc+1))/f%a))
     case(5)
       ! TPV105 benchmark description eq.2
-      Q=f%mus + f%b * log(f%Vstar * f%theta / f%Dc)
+      ! Q=f%mus + f%b * log(f%Vstar * f%theta / f%Dc)
+      Q = f%theta
       mu = f%a*asinh(abs(v)/(2d0*f%Vstar)*exp(Q/f%a))
   end select
 
@@ -252,18 +253,21 @@ contains
  ! write(*,*) 'a = ', f%a
  ! write(*,*) 'b = ', f%b
  ! write(*,*) 'Vstar = ', f%Vstar
- ! write(*,*) 'v =',v
+ write(*,*) 'v =',v
  ! write(*,*) 'Size',size(v)
-
+  
   ! First pass: 
   theta_new = rsf_update_theta(f%theta,v,f)
   v_new = rsf_update_V(tau_stick, sigma, f, theta_new, Z)
   ! Second pass:
   theta_new = rsf_update_theta(f%theta,0.5d0*(v+v_new), f)
   v_new = rsf_update_V(tau_stick, sigma, f, theta_new, Z)
-  
   ! store new velocity and state variable estimate in friction law 
-  f%theta = theta_new 
+  if (f%kind ==5)then
+          f%theta = f%mus + f%b * log(f%Vstar * theta_new / f%Dc)
+  else
+          f%theta = theta_new 
+  endif
   v = v_new
 
   end subroutine rsf_solver
@@ -331,8 +335,10 @@ contains
       theta_new = theta_new *(theta/theta_new)**exp(-f%dt/theta_new)
     case(5)
      ! TPV105 benchmark description eq.3
-      Q=f%mus + f%b * log(f%Vstar * theta / f%Dc)
+      !Q=f%mus + f%b * log(f%Vstar * theta / f%Dc)
+      Q = theta
       mu_lv = f%mus + (f%a - f%b) * log(abs(v)/f%Vstar)
+      print*, 'mu_lv =',mu_lv
       do i = 1,size(v)
         if (abs(v(i))<=f%Vw(i)) then
                 mu_ss(i) = mu_lv(i)
@@ -341,12 +347,12 @@ contains
         endif
       enddo
       Q_ss = f%a * log((2 * f%Vstar / abs(v)) * sinh(mu_ss / f%a))
-      Q_new = Q_ss + (Q - Q_ss)*exp(- abs(v) * f%dt / f%Dc)  ! Kaneko, 2008  eq.20
+      !Q_new = Q_ss + (Q - Q_ss)*exp(- abs(v) * f%dt / f%Dc)  ! Kaneko, 2008  eq.20 (more accuracy)
 
-      !dQ = abs(v)/f%Dc * (Q_ss - Q) ! kaneko, 2008 eq.24
-      !Q_new = Q + dQ * f%dt
-      
-      theta_new = (f%Dc / f%Vstar)*exp((Q_new - f%mus)/f%b) 
+      dQ = abs(v)/f%Dc * (Q_ss - Q) ! kaneko, 2008 eq.24 (same with mdsbi)
+      Q_new = Q + dQ * f%dt
+   
+      theta_new = (f%Dc / f%Vstar)*exp((Q_new - f%mus)/f%b)
 
   end select
 
@@ -684,5 +690,15 @@ subroutine rsf_timestep(time,f,v,sigma,hcell)
   time%dt = min_timestep 
 
 end subroutine
+
+function get_theta(f) result(theta)
+
+type(rsf_type),intent(in)   :: f
+double precision, dimension(size(f%theta)) :: theta
+
+theta = f%theta
+
+end function get_theta
+
 
 end module bc_dynflt_rsf
