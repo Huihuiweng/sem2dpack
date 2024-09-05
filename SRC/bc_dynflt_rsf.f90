@@ -253,11 +253,12 @@ contains
  ! write(*,*) 'a = ', f%a
  ! write(*,*) 'b = ', f%b
  ! write(*,*) 'Vstar = ', f%Vstar
- write(*,*) 'v =',v
+ ! write(*,*) 'v =',v
  ! write(*,*) 'Size',size(v)
   
   ! First pass: 
   theta_new = rsf_update_theta(f%theta,v,f)
+  !print*, 'theta', theta_new
   v_new = rsf_update_V(tau_stick, sigma, f, theta_new, Z)
   ! Second pass:
   theta_new = rsf_update_theta(f%theta,0.5d0*(v+v_new), f)
@@ -337,22 +338,26 @@ contains
      ! TPV105 benchmark description eq.3
       !Q=f%mus + f%b * log(f%Vstar * theta / f%Dc)
       Q = theta
-      mu_lv = f%mus + (f%a - f%b) * log(abs(v)/f%Vstar)
-      print*, 'mu_lv =',mu_lv
-      do i = 1,size(v)
-        if (abs(v(i))<=f%Vw(i)) then
-                mu_ss(i) = mu_lv(i)
-        else 
-                mu_ss(i) = f%fw(i) + (mu_lv(i) - f%fw(i))/((1 + (abs(v(i))/f%Vw(i))**8)**(1.0/8.0))
-        endif
-      enddo
-      Q_ss = f%a * log((2 * f%Vstar / abs(v)) * sinh(mu_ss / f%a))
-      !Q_new = Q_ss + (Q - Q_ss)*exp(- abs(v) * f%dt / f%Dc)  ! Kaneko, 2008  eq.20 (more accuracy)
+      if(ALL(abs(v(:)) > 1d-40)) then ! Avoid v == 0 or too small (accumulation numeric errors) 
+        
+        mu_lv = f%mus + (f%a - f%b) * log(abs(v)/f%Vstar)
+        do i = 1,size(v)
+                if (abs(v(i))<=f%Vw(i)) then
+                        mu_ss(i) = mu_lv(i)
+                else 
+                        mu_ss(i) = f%fw(i) + (mu_lv(i) - f%fw(i))/((1 + (abs(v(i))/f%Vw(i))**8)**(1.0/8.0))
+                endif
+        enddo
+        Q_ss = f%a * log((2 * f%Vstar / abs(v)) * sinh(mu_ss / f%a))
+        !Q_new = Q_ss + (Q - Q_ss)*exp(- abs(v) * f%dt / f%Dc)  ! Kaneko, 2008  eq.20 (more accuracy)
 
-      dQ = abs(v)/f%Dc * (Q_ss - Q) ! kaneko, 2008 eq.24 (same with mdsbi)
-      Q_new = Q + dQ * f%dt
-   
-      theta_new = (f%Dc / f%Vstar)*exp((Q_new - f%mus)/f%b)
+        dQ = abs(v)/f%Dc * (Q_ss - Q) 
+        Q_new = Q + dQ * f%dt ! kaneko, 2008 eq.24 (same with mdsbi)
+        
+        theta_new = (f%Dc / f%Vstar)*exp((Q_new - f%mus)/f%b)
+      else
+        theta_new = (f%Dc / f%Vstar)*exp((Q - f%mus)/f%b)
+      endif
 
   end select
 
