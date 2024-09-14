@@ -8,7 +8,7 @@ module bc_dynflt
   use bc_dynflt_twf
   use bc_dynflt_tp
   use bc_dynflt_load
-  
+
   implicit none
   private
 
@@ -29,7 +29,7 @@ module bc_dynflt
     type(rsf_type), pointer :: rsf => null()
     type(twf_type), pointer :: twf => null()
     type(tp_type),  pointer :: tp  => null()
-    type(load_type),  pointer :: ld  => null() 
+    type(load_type),  pointer :: ld  => null()
     logical :: allow_opening, load
     type(normal_type) :: normal
     type(bnd_grid_type), pointer :: bc1 => null(), bc2 => null()
@@ -42,40 +42,9 @@ module bc_dynflt
     logical :: osides
   end type bc_dynflt_type
 
-  public :: BC_DYNFLT_type, BC_DYNFLT_read, BC_DYNFLT_init, BC_DYNFLT_apply, BC_DYNFLT_write, BC_DYNFLT_set, BC_DYNFLT_timestep
+  public :: BC_DYNFLT_type, BC_DYNFLT_read, BC_DYNFLT_init, BC_DYNFLT_apply, BC_DYNFLT_write, BC_DYNFLT_set, BC_DYNFLT_timestep, BC_DYNFLT_strideT
 
 contains
-
-!=====================================================================
-! BEGIN INPUT BLOCK
-!
-! NAME   : BC_DYNFLT
-! GROUP  : BOUNDARY_CONDITION, DYNAMIC_FAULT
-! PURPOSE: Dynamic fault with friction
-! SYNTAX : &BC_DYNFLT friction, cohesion|cohesionH, opening, Tn|TnH, Tt|TtH,
-!                     Sxx|SxxH, Sxy|SxyH, Sxz|SxzH, Syz|SyzH, Szz|SzzH
-!                     ot1, otd, oxi, osides /
-!          followed, in order, by:
-!          1. &DIST_XXX blocks (from the DISTRIBUTIONS group) for arguments
-!             with suffix H, if present, in the order listed above.
-!          2. &BC_DYNFLT_SWF, &BC_DYNFLT_TWF, &BC_DYNFLT_RSF or &BC_DYNFLT_TP block(s) 
-!             (if absent, default values are used)
-!          3. &BC_DYNFLT_NOR block (if absent, default values are used)
-!
-! ARG: friction [name(2)] ['SWF',''] Friction law type:
-!                  SWF = slip weakening friction
-!                  TWF = time weakening friction
-!                  RSF = rate and state dependent friction
-!                  TP  = thermal pressurization
-!                  LD  = Load initial perturbations
-!                Some friction types can be combined. E.g. to set the 
-!                friction coefficient to the minimum of SWF and TWF, set 
-!                  friction='SWF','TWF'
-!                  TP can be combined with other frictions
-! ARG: cohesion [dble] [0d0] part of the strength that is not proportional to 
-!                normal stress. It must be positive or zero.
-! ARG: opening  [log] [T] Allow fault opening instead of tensile normal stress
-! ARG: Tn       [dble] [0d0] Initial normal traction (positive = tensile)
 ! ARG: Tt       [dble] [0d0] Initial tangent traction 
 !                (positive antiplane: y>0; positive inplane: right-lateral slip)
 ! ARG: Sxx      [dble] [0d0] Initial stress sigma_xx
@@ -720,7 +689,6 @@ contains
      ! Otherwise, use the slip from the previous time step (one-timestep delay)
       if (bc%CoefA2D==0d0) then
         call swf_update_state(dD(:,1),dV(:,1),bc%swf)
-      else
         call swf_set_state(bc%D(:,1), bc%swf)
       endif
       bc%MU = swf_mu(bc%swf)
@@ -970,7 +938,26 @@ contains
     call rsf_timestep(time,bc%rsf,bc%V(:,1),normal_getSigma(bc%normal),hcell)
   endif  
 
-  end subroutine
+  end subroutine BC_DYNFLT_timestep
+
+  subroutine BC_DYNFLT_strideT(bc,st,dt)
+
+  type(bc_dynflt_type), intent(in) :: bc
+  integer, intent(inout) :: st
+  double precision :: dt
+
+  st = max(1,nint(bc%odt/dt))
+
+
+  end subroutine BC_DYNFLT_strideT
+  
 
 end module bc_dynflt
-  
+
+
+
+
+
+
+
+
