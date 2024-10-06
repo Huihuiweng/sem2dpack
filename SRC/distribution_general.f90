@@ -62,7 +62,7 @@ module distribution_general
 
 !!                  dist_name(number_of_tags_above)
   character(10) :: dist_name(8) = (/ 'ORDER0    ','GAUSSIAN  ','SPLINE    ','LINEAR    ', &
-                                     'GRADIENT  ','PWCONR    ','HETE1     ','BOXER      ' /)  
+                                     'GRADIENT  ','PWCONR    ','HETE1     ','BOXER     ' /)  
 !!                                    'NEW       '
 
   public :: distribution_type,DIST_read,DIST_generate,DIST_destructor
