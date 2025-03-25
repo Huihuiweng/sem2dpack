@@ -34,6 +34,7 @@ module mat_gen
   use mat_mass
   use mat_elastic
   use mat_kelvin_voigt
+  use mat_maxwell
   use mat_damage
   use mat_plastic
   use mat_visco
@@ -54,6 +55,7 @@ module mat_gen
     type(derint_type)      , pointer :: derint =>null()
     type(matwrk_elast_type), pointer :: elast=>null() 
     type(matwrk_kv_type)   , pointer :: kv=>null() 
+    type(matwrk_maxwell_type), pointer :: maxwell=>null() 
     type(matwrk_plast_type), pointer :: plast=>null()
     type(matwrk_dmg_type)  , pointer :: dmg=>null()
     type(matwrk_visco_type), pointer :: visco=>null()
@@ -71,7 +73,7 @@ module mat_gen
            ,MAT_stress_dv
   public :: matwrk_elem_type, &
             matwrk_elast_type, matwrk_plast_type, matwrk_dmg_type, matwrk_kv_type, &
-            derint_type, &
+            derint_type, matwrk_maxwell_type, & 
             MAT_set_derint, MAT_strain, MAT_divcurl, MAT_forces, &
             MAT_diag_stiffness_init
 
@@ -88,7 +90,7 @@ contains
 !
 ! ARG: tag      [int] [none]    Number identifying a mesh domain 
 ! ARG: kind     [name(2)] ['ELAST','']  Material types:
-!               'ELAST', 'DMG','PLAST', 'KV' 
+!               'ELAST', 'DMG','PLAST', 'KV', 'MX' 
 !
 ! NOTE   : Some combinations of material kinds can be assigned to the same domain.
 !          Any material type can be combined with 'KV', for instance:
@@ -148,6 +150,7 @@ subroutine MAT_read(mat,iin)
           case ('PLAST'); name(k) = 'Plastic'
           case ('DMG')  ; name(k) = 'Damage'
           case ('KV')   ; name(k) = 'Kelvin-Voigt'
+          case ('MX')   ; name(k) = 'Maxwell'
           case ('VISCO'); name(k) = 'Visco'
           !! case ('USER'); name(k) = 'User'
           case default  ; name(k) = kind(k)
@@ -169,6 +172,7 @@ subroutine MAT_read(mat,iin)
         case ('PLAST'); call MAT_PLAST_read(mat(tag),iin)
         case ('DMG')  ; call MAT_DMG_read(mat(tag),iin)
         case ('KV')   ; call MAT_KV_read(mat(tag),iin)
+        case ('MX')   ; call MAT_Maxwell_read(mat(tag),iin)
         case ('VISCO'); call MAT_VISCO_read(mat(tag),iin)
         !! case ('USER'); call MAT_USER_read(mat(tag),iin)
         case ('')     ; continue
@@ -244,6 +248,7 @@ subroutine MAT_init_prop(mat_elem,mat_input,grid)
   call storearray('matpro:mass',MAT_MASS_mempro,idouble)
   call storearray('matpro:elast',MAT_ELAST_mempro,idouble)
   call storearray('matpro:kv',MAT_KV_mempro,idouble)
+  call storearray('matpro:maxwell',MAT_Maxwell_mempro,idouble)
   call storearray('matpro:dmg',MAT_DMG_mempro,idouble)
   call storearray('matpro:plast',MAT_PLAST_mempro,idouble)
   call storearray('matpro:visco',MAT_VISCO_mempro,idouble)
@@ -313,6 +318,7 @@ subroutine MAT_init_elem_prop(elem,ecoord)
   if (MAT_isElastic(elem)) call MAT_ELAST_init_elem_prop(elem,ecoord)
   if (MAT_isPlastic(elem)) call MAT_PLAST_init_elem_prop(elem,ecoord)
   if (MAT_isKelvinVoigt(elem)) call MAT_KV_init_elem_prop(elem,ecoord)
+  if (MAT_isMaxwell(elem)) call MAT_Maxwell_init_elem_prop(elem,ecoord)
   if (MAT_isDamage(elem)) call MAT_DMG_init_elem_prop(elem,ecoord)
   if (MAT_isVisco(elem)) call MAT_VISCO_init_elem_prop(elem,ecoord)
   !!if (MAT_isUser(elem)) call MAT_USER_init_elem_prop(elem,ecoord)
@@ -352,6 +358,11 @@ subroutine MAT_init_work(matwrk,matpro,grid,ndof,dt)
     if (MAT_isKelvinVoigt(matpro(e))) then
       allocate(matwrk(e)%kv)
       call MAT_KV_init_elem_work(matwrk(e)%kv,matpro(e),grid%ngll,dt)
+    endif
+
+    if (MAT_isMaxwell(matpro(e))) then
+      allocate(matwrk(e)%maxwell)
+      call MAT_Maxwell_init_elem_work(matwrk(e)%maxwell,matpro(e),grid%ngll,dt,ndof)
     endif
 
     if (MAT_isELastic(matpro(e))) then
@@ -402,6 +413,7 @@ subroutine MAT_init_work(matwrk,matpro,grid,ndof,dt)
   call storearray('matwrk', size(transfer(matwrk(1),(/0/)))*grid%nelem,iinteg)
   call storearray('matwrk%elast',MAT_ELAST_memwrk,idouble)
   call storearray('matwrk%kv',MAT_KV_memwrk,idouble)
+  call storearray('matwrk%maxwell',MAT_Maxwell_memwrk,idouble)
   call storearray('matwrk%derint',MAT_DERINT_memwrk,idouble)
   call storearray('matwrk%dmg',MAT_DMG_memwrk,idouble)
   call storearray('matwrk%plast',MAT_PLAST_memwrk,idouble)
@@ -434,6 +446,8 @@ subroutine MAT_Fint(f,d,v,matpro,matwrk,ngll,ndof,dt,grid, E_ep,E_el,sg,sgp)
   double precision, dimension(ngll,ngll,ndof+1) :: e,s
 
   if (MAT_isKelvinVoigt(matpro)) call MAT_KV_add_etav(d,v,matwrk%kv,ngll,ndof)
+  if (MAT_isMaxwell(matpro))     call MAT_Maxwell_add_etav(d,v,matwrk%maxwell,ngll,ndof)
+
   if (MAT_isElastic(matpro)) then
    ! elastic material has a specialized scheme
    ! that does not require intermediate computation of strain and stress
@@ -630,6 +644,8 @@ subroutine MAT_stress_dv(s,d,v,matwrk,matpro,grid,e,ngll,ndof)
   type(sem_grid_type), intent(in) :: grid
   
   if (MAT_isKelvinVoigt(matpro)) call MAT_KV_add_etav(d,v,matwrk%kv,ngll,ndof)
+  if (MAT_isMaxwell(matpro))     call MAT_Maxwell_add_etav(d,v,matwrk%maxwell,ngll,ndof)
+
   call MAT_stress(s, MAT_strain(d,matwrk,grid,e,ngll,ndof) &
                  ,matwrk,matpro,ngll,ndof,update=.false.)
   

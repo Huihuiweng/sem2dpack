@@ -336,11 +336,7 @@ contains
       v = 0.5d0*( tmp +sqrt(tmp*tmp +4d0*v*f%Vstar) )
       v = max(0d0,v)  ! arrest if v<0 
      ! remove the accumulation of numeric errors
-      do it=1,size(v)
-         if(abs(v(it))<1.0d-12) then
-              v(it) = 0.0
-         endif
-      enddo
+      where (v < 1.0d-12) v = 0d0
  
     case(2,3,4) 
      ! "Aging Law and Slip Law"
