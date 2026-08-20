@@ -24,7 +24,7 @@ Set `tp_file=.true.` to write the full fault-normal temperature and pressure
 fields. Two representative input examples are included:
 
 - TP-only: `EXAMPLES/Thermpres_SWF/Par.inp`
-- TP-dilatancy: `EXAMPLES/Project1_TP_Dilatancy/Par.inp`
+- TP-dilatancy: `EXAMPLES/25D_TP_Dilatancy/Par.inp`
 
 The TP-dilatancy example provides a small 2.5D smoke test with both processes
 enabled.
@@ -44,7 +44,7 @@ The original Makefile also supports Intel Fortran through its user settings.
 ## Run the smoke test
 
 ```bash
-cd EXAMPLES/Project1_TP_Dilatancy
+cd EXAMPLES/25D_TP_Dilatancy
 ../../SRC/sem2dsolve
 ```
 

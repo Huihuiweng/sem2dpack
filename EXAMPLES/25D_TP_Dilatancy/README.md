@@ -1,4 +1,4 @@
-# Project1 TP-dilatancy smoke test
+# 2.5D TP-dilatancy smoke test
 
 This compact example checks the coupled 2.5D dynamic-fault implementation with
 thermal pressurization, fault-normal diffusion, and nonzero dilatancy. It is

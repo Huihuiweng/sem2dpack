@@ -1,6 +1,6 @@
 # Compact 2.5D smoke test with thermal pressurization and dilatancy
 &GENERAL iexec=1, ngll=5, fmax=3.d0, W=10d3, ndof=1,
- title='Project1 2.5D TP-dilatancy smoke test', verbose='1101', ItInfo=50 /
+ title='2.5D TP-dilatancy smoke test', verbose='1101', ItInfo=50 /
 
 &MESH_DEF method='CARTESIAN' /
 &MESH_CART xlim=0d3,30d3, zlim=0d3,15d3, nelem=60,30 /

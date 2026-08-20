@@ -13,7 +13,7 @@ make -B \
 ```
 
 The source tree was also compiled in release mode with `OPT="-O2"`.
-`EXAMPLES/Project1_TP_Dilatancy/Par.inp` completed with exit status 0 for both
+`EXAMPLES/25D_TP_Dilatancy/Par.inp` completed with exit status 0 for both
 builds. The test uses nonzero dilatancy, finite seismogenic width, and coupled
 thermal and hydraulic diffusion. GNU Fortran reports an IEEE underflow flag at
 exit for very small exponential terms; this does not stop the calculation.
