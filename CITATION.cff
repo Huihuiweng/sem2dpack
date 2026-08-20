@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: >-
+  If you use this extension, please cite this software release and the original
+  SEM2DPACK v2.3.8 release by Jean-Paul Ampuero.
+title: SEM2DPACK TP-dilatancy extension for finite-width rupture simulations
+type: software
+authors:
+  - family-names: Gao
+    given-names: Yi
+  - family-names: Weng
+    given-names: Huihui
+repository-code: https://github.com/Egao0206/sem2dpack
+version: 1.0.0
+date-released: 2026-08-20
+preferred-citation:
+  type: software
+  title: SEM2DPACK TP-dilatancy extension for finite-width rupture simulations
+  authors:
+    - family-names: Gao
+      given-names: Yi
+    - family-names: Weng
+      given-names: Huihui
+  year: 2026
+  version: 1.0.0
+  url: https://github.com/Egao0206/sem2dpack

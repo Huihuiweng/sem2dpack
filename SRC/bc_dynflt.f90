@@ -188,7 +188,7 @@ contains
     end select
   enddo
 
-  if(bc%load == .true.) then
+  if (bc%load) then
         allocate(bc%ld)
         call ld_read(bc%ld,iin)
   endif
@@ -953,7 +953,6 @@ contains
   
 
 end module bc_dynflt
-
 
 
 

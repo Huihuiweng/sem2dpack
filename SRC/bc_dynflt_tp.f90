@@ -47,11 +47,11 @@ module bc_dynflt_tp
   !
   ! Parameters:
   ! dp = pressure (Pa)
-  ! RHOC = volumetric heat capacity  (pa/K)
+  ! RHOC = volumetric heat capacity  (Pa/K)
   ! K = thermal conductivity 
   ! ALPHATH = thermal diffusivity    (m^2/s)
   ! ALPHAHY = hydraulic diffusivity   (m^2/s)
-  ! LAMBDA = pore pressure rise per unit temprature rise (Pa/K)
+  ! LAMBDA = pore pressure rise per unit temperature rise (Pa/K)
   ! SHAPE = shape of strain distribution 
   ! W = width of deformation zone  (m)
   ! PHI = Maximum inelastic porosity change at large slip 
@@ -73,7 +73,6 @@ contains
     integer(pin)  :: nz
     real(pr)      :: rhoc,K,alphath,alphahy,Lambda,W,beta,deltaD,Phi
     real(pr)      :: T0, dz
-    double precision  :: FTCS
     character(20) :: rhocH,KH,alphathH,alphahyH,LambdaH,WH
     character(20) :: betaH,deltaDH,PhiH
     character(64) :: shape
@@ -136,14 +135,13 @@ contains
     tp%T0 = T0
     tp%dz = dz
     tp%nz = nz
-    FTCS = max(maxval(tp%alphath)*0.002/(tp%dz**2), maxval(tp%alphahy)*0.002/(tp%dz**2))
-  if (echo_input) write(iout,400) nz,dz,T0,rhocH,KH,alphathH,alphahyH,LambdaH,WH,PhiH,deltaDH,betaH,FTCS,shape
+  if (echo_input) write(iout,400) nz,dz,T0,rhocH,KH,alphathH,alphahyH,LambdaH,WH,PhiH,deltaDH,betaH,shape
   return
 
   400 format(5x,'Friction law  . . . . . . . . . . . . . .  = thermal pressurization', &
-            /5x,'  Number of finite difference elements . (nz) = ',I,&
-            /5x,'  Size of finite difference elements . . (dz) = ',F,&
-            /5x,'  Initial temperature. . . . . . . . . . (T0) = ',F,&
+            /5x,'  Number of finite difference elements . (nz) = ',I0,&
+            /5x,'  Size of finite difference elements . . (dz) = ',ES14.6,&
+            /5x,'  Initial temperature. . . . . . . . . . (T0) = ',ES14.6,&
             /5x,'  Volumetric heat capacity  . . . . .  (rhoc) = ',A,&
             /5x,'  Thermal conductivity . . . . . . . . . .(K) = ',A,&
             /5x,'  Thermal diffusivity . . . . . . . (alphath) = ',A,&
@@ -153,7 +151,6 @@ contains
             /5x,'  Maximum inelastic porosity  . . . . . (Phi) = ',A,&
             /5x,'  Characteristic slip distance . . . (DeltaD) = ',A,&
             /5x,'  Volumetric fluid storage coefficient (beta) = ',A,&
-            /5x,'  Forward Time Center Space(dt=0.002)..(FTCS) = ',A,&
             /5x,'  Shape of strain distribution . . . .(shape) = ',A)
 
   end subroutine tp_read
@@ -167,7 +164,7 @@ contains
     type(tp_type),intent(inout)   :: tp
     double precision, intent(in)  :: coord(:,:)
     double precision, intent(in)  :: dt
-    integer(pin) :: k,darray
+    integer(pin) :: k
     integer(pin) :: ny
 
     tp%dtime = dt
@@ -418,4 +415,3 @@ contains
 
 
 end module bc_dynflt_tp
-

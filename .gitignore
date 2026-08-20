@@ -1,3 +1,26 @@
+# macOS and editor files
+.DS_Store
+*.swp
+*~
 
-JUPYTER/.DS_Store
+# Python caches
 *.pyc
+__pycache__/
+
+# Fortran build products
+*.o
+*.mod
+*.smod
+*.M
+sem2dsolve
+
+# Common SEM2DPACK runtime products
+ElmtNodes_sem2d.tab
+Grid_sem2d.*
+MeshNodesCoord_sem2d.tab
+Resolution_sem2d.*
+Stability_sem2d.*
+ibool_sem2d.dat
+Flt*_sem2d.*
+Snapshots_sem2d.*
+Seis*_sem2d.*
