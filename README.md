@@ -8,8 +8,7 @@ hydraulic diffusion, and shear-induced dilatancy.
 The `thermpres` branch contains the implementation used for the dynamic rupture
 simulations associated with the Project1 manuscript. The corresponding
 software release is identified by the tag `project1-v1.0.0`. Production input
-files and processed outputs supporting the manuscript are archived separately
-from this software repository.
+files and processed outputs from the full parameter sweeps are not included.
 
 ## Main extension
 
@@ -22,8 +21,13 @@ of dilatant suction, and all input quantities must use a consistent unit
 system.
 
 Set `tp_file=.true.` to write the full fault-normal temperature and pressure
-fields. The example in `EXAMPLES/Project1_TP_Dilatancy` provides a small
-2.5D smoke test with both thermal pressurization and dilatancy enabled.
+fields. Two representative input examples are included:
+
+- TP-only: `EXAMPLES/Thermpres_SWF/Par.inp`
+- TP-dilatancy: `EXAMPLES/Project1_TP_Dilatancy/Par.inp`
+
+The TP-dilatancy example provides a small 2.5D smoke test with both processes
+enabled.
 
 ## Build
 
