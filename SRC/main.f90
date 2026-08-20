@@ -7,15 +7,16 @@
   use solver, only : solve
   use plot_gen, only : PLOT_FIELD
   use receivers, only : REC_store,REC_write
-  use bc_gen, only : BC_write
+  use bc_gen, only : BC_write,BC_stride
   use energy, only : energy_compute, energy_write, stress_glut_write
   use constants, only : COMPUTE_ENERGIES, COMPUTE_STRESS_GLUT
+  use bc_dynflt
 
   implicit none
 
   type(problem_type) :: pb
   real :: cputime0, cputime1, cputime2,cputime3
-  integer :: it,iexec
+  integer :: it,iexec,st=1
   integer, parameter :: NT_CHECK=10
 
   call CPU_TIME(cputime0)
@@ -84,8 +85,13 @@
       if(associated(pb%rec) .and. pb%time%kind .ne. 'quasi-static') call REC_store(pb%rec,it,pb%grid)
 
       !-- write data for faults, and possibly other BCs
-      call BC_write(pb%bc,it,pb%fields%displ,pb%fields%veloc)
-    
+      !-- add stride_t to adjust output data volumn
+
+      call BC_stride(pb%bc,st,pb%time%dt)
+      if (mod(it,st) == 0 ) then
+            call BC_write(pb%bc,it,pb%fields%displ,pb%fields%veloc)
+      endif 
+
       !-- export energies
       if (COMPUTE_ENERGIES) then
         call energy_compute(pb%energy,pb%matpro,pb%matwrk,pb%grid,pb%fields)

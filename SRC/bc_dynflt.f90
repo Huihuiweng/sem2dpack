@@ -7,6 +7,7 @@ module bc_dynflt
   use bc_dynflt_rsf
   use bc_dynflt_twf
   use bc_dynflt_tp
+  use bc_dynflt_load
 
   implicit none
   private
@@ -28,49 +29,22 @@ module bc_dynflt
     type(rsf_type), pointer :: rsf => null()
     type(twf_type), pointer :: twf => null()
     type(tp_type),  pointer :: tp  => null()
-    logical :: allow_opening
+    type(load_type),  pointer :: ld  => null()
+    logical :: allow_opening, load
     type(normal_type) :: normal
     type(bnd_grid_type), pointer :: bc1 => null(), bc2 => null()
     type(bc_dynflt_input_type) :: input
+    !for Load:
+    double precision, dimension(:), pointer :: T00=>null()
    ! for outputs:
     double precision :: ot1,odt
-    integer :: oit,oitd,ounit,oix1,oixn,oixd, ou_pot
+    integer :: oit,oitd,ounit,oix1,oixn,oixd,ou_pot,unit_pressure,unit_temperature
     logical :: osides
   end type bc_dynflt_type
 
-  public :: BC_DYNFLT_type, BC_DYNFLT_read, BC_DYNFLT_init, BC_DYNFLT_apply, BC_DYNFLT_write, BC_DYNFLT_set, BC_DYNFLT_timestep
+  public :: BC_DYNFLT_type, BC_DYNFLT_read, BC_DYNFLT_init, BC_DYNFLT_apply, BC_DYNFLT_write, BC_DYNFLT_set, BC_DYNFLT_timestep, BC_DYNFLT_strideT
 
 contains
-
-!=====================================================================
-! BEGIN INPUT BLOCK
-!
-! NAME   : BC_DYNFLT
-! GROUP  : BOUNDARY_CONDITION, DYNAMIC_FAULT
-! PURPOSE: Dynamic fault with friction
-! SYNTAX : &BC_DYNFLT friction, cohesion|cohesionH, opening, Tn|TnH, Tt|TtH,
-!                     Sxx|SxxH, Sxy|SxyH, Sxz|SxzH, Syz|SyzH, Szz|SzzH
-!                     ot1, otd, oxi, osides /
-!          followed, in order, by:
-!          1. &DIST_XXX blocks (from the DISTRIBUTIONS group) for arguments
-!             with suffix H, if present, in the order listed above.
-!          2. &BC_DYNFLT_SWF, &BC_DYNFLT_TWF, &BC_DYNFLT_RSF or &BC_DYNFLT_TP block(s) 
-!             (if absent, default values are used)
-!          3. &BC_DYNFLT_NOR block (if absent, default values are used)
-!
-! ARG: friction [name(2)] ['SWF',''] Friction law type:
-!                  SWF = slip weakening friction
-!                  TWF = time weakening friction
-!                  RSF = rate and state dependent friction
-!                  TP  = thermal pressurization
-!                Some friction types can be combined. E.g. to set the 
-!                friction coefficient to the minimum of SWF and TWF, set 
-!                  friction='SWF','TWF'
-!                  TP can be combined with other frictions
-! ARG: cohesion [dble] [0d0] part of the strength that is not proportional to 
-!                normal stress. It must be positive or zero.
-! ARG: opening  [log] [T] Allow fault opening instead of tensile normal stress
-! ARG: Tn       [dble] [0d0] Initial normal traction (positive = tensile)
 ! ARG: Tt       [dble] [0d0] Initial tangent traction 
 !                (positive antiplane: y>0; positive inplane: right-lateral slip)
 ! ARG: Sxx      [dble] [0d0] Initial stress sigma_xx
@@ -90,6 +64,8 @@ contains
 ! ARG: osides   [log] [F] Export displacement and velocities on each side
 !                of the fault
 ! ARG: V        [dble] [1d-12] Initial velocity (needed for RSF)
+! 
+! ARG: load     [log][F] Perturbations on fault
 !
 ! NOTE: The initial stress can be set as a stress tensor (Sxx,etc), as
 !       initial tractions on the fault plane (Tn and Tt) or as the sum of both.
@@ -112,12 +88,12 @@ contains
                   ,dt_txt,oxi2_txt, cohesionH, VH
   character(3) :: friction(3)
   integer :: i,oxi(3)
-  logical :: opening,osides
+  logical :: opening,osides,load
 
   NAMELIST / BC_DYNFLT /  Tt,Tn,Sxx,Sxy,Sxz,Syz,Szz &
                          ,TtH,TnH,SxxH,SxyH,SxzH,SyzH,SzzH &
                          ,ot1,otd,oxi,osides, friction, opening &
-                         ,cohesion, cohesionH, V, VH
+                         ,cohesion, cohesionH, V, VH, load
 
   Tt = 0d0
   Tn = 0d0
@@ -153,6 +129,7 @@ contains
   cohesionH = ''
   
   opening = .true.
+  load = .false.
 
   read(iin,BC_DYNFLT,END=100)
 
@@ -174,6 +151,7 @@ contains
   call DIST_CD_Read(bc%input%V,V,VH,iin,VH)
 
   bc%allow_opening = opening
+  bc%load = load
 
   if (echo_input) then
     if (otd==0d0) then
@@ -187,7 +165,7 @@ contains
       write(oxi2_txt,'(I0)') oxi(2)
     endif
     write(iout,200) TnH,TtH,SxxH,SxyH,SxzH,SyzH,SzzH,VH, & 
-                    cohesionH,opening,ot1,dt_txt,oxi(1),oxi2_txt,oxi(3),osides
+                    cohesionH,opening,ot1,dt_txt,oxi(1),oxi2_txt,oxi(3),osides,load
   endif
 
   do i=1,3,1
@@ -210,6 +188,11 @@ contains
     end select
   enddo
 
+  if (bc%load) then
+        allocate(bc%ld)
+        call ld_read(bc%ld,iin)
+  endif
+
   call normal_read(bc%normal,iin)
 
   return
@@ -229,7 +212,9 @@ contains
             /5x,'       first node . . . . . . . . (oxi(1)) = ',I0,&
             /5x,'       last node  . . . . . . . . (oxi(2)) = ',A,&
             /5x,'       node stride  . . . . . . . (oxi(3)) = ',I0,&
-            /5x,'       data from each fault side. (osides) = ',L1)
+            /5x,'       data from each fault side. (osides) = ',L1, &
+            /5x,'Load  perturbations . . . . . . .(loading) = ',L1 )
+
 
   end subroutine BC_DYNFLT_read
 
@@ -397,13 +382,16 @@ contains
   allocate(Tx(npoin))
   allocate(Ty(npoin))
   allocate(Tz(npoin))
+  allocate(bc%T00(npoin))
   Tx = Sxx*nx + Sxz*nz
   Ty = Sxy*nx + Syz*nz
   Tz = Sxz*nx + Szz*nz
   if (ndof==1) then ! SH
     bc%T0(:,1) = Tt0 + Ty
+    bc%T00 = Tt0 + Ty
   else ! P-SV
     bc%T0(:,1) = Tt0 + Tx*nz - Tz*nx
+    bc%T00 = Tt0 + Tx*nz - Tz*nx
   endif 
   bc%T0(:,2) = Tn0 + Tx*nx + Tz*nz
   deallocate(Tt0,Tn0,Sxx,Sxy,Sxz,Syz,Szz,Tx,Ty,Tz)
@@ -446,6 +434,9 @@ contains
   bc%ou_pot = IO_new_unit()
   open(bc%ou_pot,file=oname,status='replace')
 
+  ! T0(:,1) - initial shear stress
+  ! T0(:,2) - initial normal stress
+  ! bc%Mu   - initial friction parameter
   write(oname,'("Flt",I2.2,"_init_sem2d.tab")') tags(1)
   ounit = IO_new_unit()
   open(ounit,file=oname,status='replace')
@@ -453,6 +444,16 @@ contains
     write(ounit,*) bc%T0(i,1),bc%T0(i,2),bc%MU(i)
   enddo
   close(ounit)
+
+ ! Add P(nz,nx) and T(nz,nx) in new files
+  write(oname,'("Flt",I2.2,"_pressure_sem2d.dat")') tags(1)
+  bc%unit_pressure = IO_new_unit()
+  open(bc%unit_pressure,file=oname,status='replace',form='unformatted')
+  
+  write(oname,'("Flt",I2.2,"_tempera_sem2d.dat")') tags(1)
+  bc%unit_temperature = IO_new_unit()
+  open(bc%unit_temperature,file=oname,status='replace',form='unformatted')
+
 
  ! adjust output timestep to the nearest multiple of dt:
   bc%oitd = max(1,nint(bc%odt/dt))
@@ -483,6 +484,8 @@ contains
   NDAT = 5
   if (bc%osides)         NDAT = NDAT + 4*ndof
   if (associated(bc%tp)) NDAT = NDAT + 2
+  if (associated(bc%ld)) NDAT = NDAT + 1
+  if (associated(bc%rsf)) NDAT = NDAT + 1
   NSAMP = (TIME_getNbTimeSteps(time) -bc%oit)/bc%oitd +1
   hunit = IO_new_unit()
 
@@ -503,6 +506,15 @@ contains
   if (associated(bc%tp)) then
     temp  = trim(label)
     label = trim(temp)//":Pore_Pressure:Temperature"
+  endif
+  if (associated(bc%ld)) then
+    temp  = trim(label)
+    label = trim(temp)//":Load_Stress"   
+  endif
+  
+  if (associated(bc%rsf)) then ! for scec benchmark
+        temp = trim(label)
+        label = trim(temp)//":State_value"
   endif
 
   write(hunit,'(A)') trim(label)
@@ -596,6 +608,7 @@ contains
   double precision, dimension(bc%npoin,2) :: T
   double precision, dimension(bc%npoin,size(V,2)) :: dD,dV,dA
   integer :: ndof
+  double precision, dimension(:,:), allocatable :: P
 
   ndof = size(MxA,2)
 
@@ -619,6 +632,12 @@ contains
   if (.not.associated(bc%bc2) .or. ndof==1) T(:,2)=0d0 
 
 ! add initial stress
+! T_old = update_T 
+! T0 = initial Stress (where pertubations add)
+  
+  if(associated(bc%ld)) then  
+       bc%T0(:,1) = load_form(bc%ld, bc%T00, bc%coord, time%time)
+  endif
   T = T + bc%T0
 
 ! Solve for normal stress (negative is compressive)
@@ -631,7 +650,9 @@ contains
   ! Update pore pressure and temperature in TP
   if (associated(bc%tp)) then
     call thermpres_rate(bc%tp,bc%coord,bc%V(:,1),bc%T(:,1)+bc%T0(:,1),bc%D(:,1))
-    eff_sigma = eff_sigma + getPorepressure(bc%tp)
+    P = getPorepressure(bc%tp)
+    eff_sigma = eff_sigma + P(1,:)
+   !eff_sigma = eff_sigma + getPorepressure(bc%tp)
     if(maxval(eff_sigma)>0) then 
         call IO_abort('Fault opening due to TP!')
     endif
@@ -651,17 +672,14 @@ contains
       call rsf_solver(bc%V(:,1), T(:,1), eff_sigma, bc%rsf, bc%Z(:,1))
     endif
     bc%MU = rsf_mu(bc%V(:,1), bc%rsf)
-                                        
+
    !DEVEL combined with time-weakening
    !DEVEL WARNING: slip rate is updated later, but theta is not
 
    ! superimposed time-weakening
     if (associated(bc%twf)) bc%MU = min( bc%MU, twf_mu(bc%twf,bc%coord,time%time,bc%D(:,1)) )
-
     strength = - bc%MU * eff_sigma
-                                         
     T(:,1) = sign( strength, T(:,1))
-
   else
    !-- slip weakening
     if (associated(bc%swf)) then
@@ -671,7 +689,6 @@ contains
      ! Otherwise, use the slip from the previous time step (one-timestep delay)
       if (bc%CoefA2D==0d0) then
         call swf_update_state(dD(:,1),dV(:,1),bc%swf)
-      else
         call swf_set_state(bc%D(:,1), bc%swf)
       endif
       bc%MU = swf_mu(bc%swf)
@@ -694,10 +711,10 @@ contains
     T(:,1) = sign( min(abs(T(:,1)),strength), T(:,1))
                                   
   endif
+  
 
 ! Subtract initial stress
   T = T - bc%T0
-
 ! Save tractions
   bc%T = T
 
@@ -712,7 +729,6 @@ contains
   dA = dA - bc%T(:,1:ndof)/(bc%Z*bc%CoefA2V)
   bc%D = dD + bc%CoefA2D*dA
   bc%V = dV + bc%CoefA2V*dA
-
   end subroutine BC_DYNFLT_apply
 
 !---------------------------------------------------------------------
@@ -773,13 +789,20 @@ contains
 ! 3: Shear stress 
 ! 4: Normal stress 
 ! 5: Friction coefficient
-!
+! Followings are Optioal
+! 6: Pore pressure
+! 7: Temperature
+! 8: Laod stress
+! 9: State value
   subroutine BC_DYNFLT_write(bc,itime,d,v)
 
   type(bc_dynflt_type), intent(inout) :: bc
   integer, intent(in) :: itime
   double precision, dimension(:,:), intent(in) :: d,v
-  double precision, dimension(size(bc%T,1)) :: T,P
+  !double precision, dimension(size(bc%T,1)) :: T,P
+  double precision, dimension(:,:), allocatable :: T,P
+  double precision, dimension(:), allocatable :: theta
+  integer(selected_int_kind(9)) :: nz
 
   write(bc%ou_pot,'(6D24.16)') BC_DYNFLT_potency(bc,d), BC_DYNFLT_potency(bc,v)
 
@@ -802,10 +825,23 @@ contains
   if (associated(bc%tp)) then
      P = getPorepressure(bc%tp)
      T = getTemperature(bc%tp)
-     write(bc%ounit) real( P(bc%oix1:bc%oixn:bc%oixd) )
-     write(bc%ounit) real( T(bc%oix1:bc%oixn:bc%oixd) )
+     nz = size(P,1)
+     write(bc%ounit) real( P(1,bc%oix1:bc%oixn:bc%oixd) ) ! 1:2001:1
+     write(bc%ounit) real( T(1,bc%oix1:bc%oixn:bc%oixd) )
+     if (bc%tp%tp_file) then
+        write(bc%unit_pressure) real( P(1:nz:1,bc%oix1:bc%oixn:bc%oixd) )
+        write(bc%unit_temperature) real( T(1:nz:1,bc%oix1:bc%oixn:bc%oixd) )
+     endif
   endif
 !
+ if(associated(bc%ld)) then
+   write(bc%ounit) real( bc%T0(bc%oix1:bc%oixn:bc%oixd,1) )
+ endif
+
+ if(associated(bc%rsf)) then      
+   theta = get_theta(bc%rsf)
+   write(bc%ounit) real( theta(bc%oix1:bc%oixn:bc%oixd) ) ! if  kind = 5, theta is Theta (regularized)
+ endif
   bc%oit = bc%oit + bc%oitd
 
   end subroutine BC_DYNFLT_write
@@ -902,7 +938,25 @@ contains
     call rsf_timestep(time,bc%rsf,bc%V(:,1),normal_getSigma(bc%normal),hcell)
   endif  
 
-  end subroutine
+  end subroutine BC_DYNFLT_timestep
+
+  subroutine BC_DYNFLT_strideT(bc,st,dt)
+
+  type(bc_dynflt_type), intent(in) :: bc
+  integer, intent(inout) :: st
+  double precision :: dt
+
+  st = max(1,nint(bc%odt/dt))
+
+
+  end subroutine BC_DYNFLT_strideT
+  
 
 end module bc_dynflt
-  
+
+
+
+
+
+
+

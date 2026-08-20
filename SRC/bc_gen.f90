@@ -49,7 +49,7 @@ module bc_gen
                         IS_DYNFLT = 6
                         !! IS_USER = 7
 
-  public :: bc_type,bc_read,bc_apply,bc_init,bc_write,bc_set,bc_timestep
+  public :: bc_type,bc_read,bc_apply,bc_init,bc_write,bc_set,bc_timestep,BC_stride
 
 contains
 
@@ -335,6 +335,26 @@ subroutine BC_write(bc,itime,d,v)
   enddo
 
 end subroutine BC_write
+
+!=======================================================================
+! output data by selected time stride
+subroutine BC_stride(bc,st,dt)
+
+   type(bc_type), pointer :: bc(:)
+   integer, intent(inout) :: st
+
+   double precision, intent(in) :: dt
+   integer :: i
+
+   if (.not. associated(bc)) return
+
+   do i = 1,size(bc)
+       if (bc(i)%kind == IS_DYNFLT .or. bc(i)%kind == IS_KINFLT) then
+             call BC_DYNFLT_strideT(bc(i)%dynflt, st, dt)
+       endif
+   end do
+
+end subroutine BC_stride
 
 !=======================================================================
 !! Sets the field along the boundary to a specific value

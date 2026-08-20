@@ -41,12 +41,14 @@ bc_dirneu.o: bc_periodic.o bnd_grid.o constants.o echo.o spec_grid.o stdio.o \
 	stf_gen.o time.o
 bc_dynflt.o: bc_dynflt_normal.o bc_dynflt_rsf.o bc_dynflt_swf.o bc_dynflt_tp.o\
 	bc_dynflt_twf.o bc_periodic.o bnd_grid.o constants.o \
-	distribution_cd.o echo.o spec_grid.o stdio.o time.o
+	distribution_cd.o echo.o spec_grid.o stdio.o time.o\
+	bc_dynflt_load.o
 bc_dynflt_normal.o: echo.o stdio.o
 bc_dynflt_rsf.o: distribution_cd.o echo.o stdio.o constants.o
 bc_dynflt_swf.o: distribution_cd.o echo.o stdio.o
 bc_dynflt_twf.o: echo.o stdio.o
 bc_dynflt_tp.o:  distribution_cd.o echo.o stdio.o
+bc_dynflt_load.o: echo.o stdio.o
 bc_gen.o: bc_abso.o bc_dirneu.o bc_dynflt.o bc_kinflt.o bc_lsf.o \
 	bc_periodic.o bnd_grid.o echo.o fields.o prop_mat.o spec_grid.o \
 	src_gen.o stdio.o time.o
@@ -60,11 +62,12 @@ distribution_cd.o: distribution_general.o echo.o stdio.o utils.o
 distribution_gaussian.o: stdio.o
 distribution_general.o: distribution_gaussian.o distribution_gradient.o \
 	distribution_hete1.o distribution_linear.o distribution_order0.o \
-	distribution_pwconr.o distribution_spline.o stdio.o
+	distribution_pwconr.o distribution_spline.o stdio.o distribution_boxer.o 
 distribution_gradient.o: stdio.o utils.o
 distribution_hete1.o: constants.o stdio.o
 distribution_linear.o: stdio.o utils.o
 distribution_pwconr.o: stdio.o
+distribution_boxer.o: stdio.o
 distribution_spline.o: stdio.o utils.o
 energy.o: fields.o mat_gen.o prop_mat.o spec_grid.o stdio.o
 fem_grid.o: bnd_grid.o constants.o elem_q4.o elem_q8h.o elem_q9.o \
@@ -77,7 +80,7 @@ init.o: bc_gen.o constants.o echo.o energy.o fields.o mat_gen.o mat_mass.o \
 input.o: bc_gen.o echo.o mat_gen.o mesh_gen.o plot_gen.o problem_class.o \
 	receivers.o src_gen.o stdio.o time.o
 main.o: bc_gen.o constants.o echo.o energy.o init.o input.o plot_gen.o \
-	problem_class.o receivers.o solver.o
+	problem_class.o receivers.o solver.o bc_dynflt.o
 mat_damage.o: constants.o echo.o prop_mat.o spec_grid.o stdio.o utils.o
 mat_elastic.o: constants.o echo.o mxmlib.o prop_mat.o spec_grid.o stdio.o
 mat_gen.o: echo.o fields.o mat_damage.o mat_elastic.o mat_kelvin_voigt.o \

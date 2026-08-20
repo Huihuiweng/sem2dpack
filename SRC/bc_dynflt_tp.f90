@@ -20,7 +20,7 @@ module bc_dynflt_tp
   real(pr),parameter :: twopi = 2._pr*pi
 
   type tp_input_type
-    type(cd_type) :: rhoc,K,alphath,alphahy,Lambda,W,beta,deltaD,Phi 
+    type(cd_type) :: rhoc,K,alphath,alphahy,Lambda,W,beta,deltaD,Phi,tp_file 
   end type tp_input_type
 
 
@@ -32,9 +32,13 @@ module bc_dynflt_tp
      real(pr)      :: T0, dz, dtime, sub_dt
      character(64) :: shape
      integer(pin)  :: nz
-
+     logical, public :: tp_file
      type(tp_input_type) :: input
   end type tp_type
+
+ 
+
+
 
   public :: tp_type, tp_read, tp_init, thermpres_rate, getPorepressure, getTemperature 
 
@@ -42,16 +46,17 @@ module bc_dynflt_tp
   ! thermal pressurization friction law
   !
   ! Parameters:
-  ! RHOC = volumetric heat capacity
-  ! K = thermal conductivity
-  ! ALPHATH = thermal diffusivity
-  ! ALPHAHY = hydraulic diffusivity
-  ! LAMBDA = pore pressure rise per unit temprature rise
-  ! SHAPE = shape of strain distribution
-  ! W = width of deformation zone
-  ! PHI = Maximum inelastic porosity change at large slip
-  ! DELTAD = Characteristic slip distance associated with the change in porosity
-  ! BETA =  volumetric pore fluid storage coefficient beta = n*(beta_n+beta_f)
+  ! dp = pressure (Pa)
+  ! RHOC = volumetric heat capacity  (Pa/K)
+  ! K = thermal conductivity 
+  ! ALPHATH = thermal diffusivity    (m^2/s)
+  ! ALPHAHY = hydraulic diffusivity   (m^2/s)
+  ! LAMBDA = pore pressure rise per unit temperature rise (Pa/K)
+  ! SHAPE = shape of strain distribution 
+  ! W = width of deformation zone  (m)
+  ! PHI = Maximum inelastic porosity change at large slip 
+  ! DELTAD = Characteristic slip distance associated with the change in porosity (m)
+  ! BETA =  volumetric pore fluid storage coefficient beta = n*(beta_n+beta_f) (/Pa)
 
 contains
 
@@ -71,10 +76,11 @@ contains
     character(20) :: rhocH,KH,alphathH,alphahyH,LambdaH,WH
     character(20) :: betaH,deltaDH,PhiH
     character(64) :: shape
-
+    logical       :: tp_file
+        
     ! make namelist of user input variables
     namelist /BC_DYNFLT_TP/ shape,T0,dz,nz,&
-                            rhoc,K,alphath,alphahy,Lambda,W,beta,deltaD,Phi,&
+                            rhoc,K,alphath,alphahy,Lambda,W,beta,deltaD,Phi,tp_file,&
                             rhocH,KH,alphathH,alphahyH,LambdaH,WH,betaH,deltaDH,PhiH
 
     ! assign default values
@@ -91,6 +97,7 @@ contains
     beta    = one
     deltaD  = one
     Phi     = zero
+    tp_file = .false.
     rhocH   = ""
     KH      = ""
     alphathH= ""
@@ -123,18 +130,18 @@ contains
     call DIST_CD_Read(tp%input%beta,beta,betaH,ninput,betaH)
     call DIST_CD_Read(tp%input%deltaD,deltaD,deltaDH,ninput,deltaDH)
     call DIST_CD_Read(tp%input%Phi,Phi,PhiH,ninput,PhiH)
-
+    
+    tp%tp_file = tp_file
     tp%T0 = T0
     tp%dz = dz
     tp%nz = nz
-
-  if (echo_input) write(iout,400) nz,dz,T0,rhocH,KH,alphathH,alphahyH,LambdaH,WH,betaH,deltaDH,PhiH,shape
+  if (echo_input) write(iout,400) nz,dz,T0,rhocH,KH,alphathH,alphahyH,LambdaH,WH,PhiH,deltaDH,betaH,shape
   return
 
   400 format(5x,'Friction law  . . . . . . . . . . . . . .  = thermal pressurization', &
-            /5x,'  Number of finite difference elements . (nz) = ',I,&
-            /5x,'  Size of finite difference elements . . (dz) = ',F,&
-            /5x,'  Initial temperature. . . . . . . . . . (T0) = ',F,&
+            /5x,'  Number of finite difference elements . (nz) = ',I0,&
+            /5x,'  Size of finite difference elements . . (dz) = ',ES14.6,&
+            /5x,'  Initial temperature. . . . . . . . . . (T0) = ',ES14.6,&
             /5x,'  Volumetric heat capacity  . . . . .  (rhoc) = ',A,&
             /5x,'  Thermal conductivity . . . . . . . . . .(K) = ',A,&
             /5x,'  Thermal diffusivity . . . . . . . (alphath) = ',A,&
@@ -157,7 +164,7 @@ contains
     type(tp_type),intent(inout)   :: tp
     double precision, intent(in)  :: coord(:,:)
     double precision, intent(in)  :: dt
-    integer(pin) :: k,darray
+    integer(pin) :: k
     integer(pin) :: ny
 
     tp%dtime = dt
@@ -228,9 +235,10 @@ contains
     ny = size(coord,2)
     dt = tp%dtime
 
-    ! Use FTCS scheme to stabilize the finite difference solution
+    ! Use FTCS(Forward Time Central Space) scheme to stabilize the finite difference solution
     ! i.e., delta_t < delta_z**2 / (2*max(alphahy,alphath))
     FTCS = max(maxval(tp%alphath)*dt/tp%dz**2, maxval(tp%alphahy)*dt/tp%dz**2)
+    !write(*,*) FTCS 1.4
     if (FTCS < 0.2) then
        sub_steps = one
        sub_dt    = dt
@@ -245,6 +253,8 @@ contains
     do j = 1,sub_steps
        do i = 1,ny
           call thermpres_rate_point(tp%dT(:,i),tp%dp(:,i),tp%T(:,i),tp%p(:,i),Q(i),V(i),D(i),i,tp)
+          !write(*,*) "Shear_rate Slip_rate Slip"
+          !write(*,*) Q(i),V(i),D(i)
        end do
 
        ! Update T and P
@@ -353,16 +363,17 @@ contains
     else
     end if
 
-    ! add contribution from diffusion of heat and fluid mass
+    ! add contribution from diffusion of heat and fluid mass in shear zone direction
     ! parameter combinations
     rt = alphath/dz**2
     rp = alphahy/dz**2
     rd = (1/beta)*Phi*(V/deltaD)*exp(-D/deltaD)
-        
     ! diffusion terms in interior
     do i = 2,nz-1
        dT(i) = dT(i)+rt*(T(i+1)-two*T(i)+T(i-1))
        dp(i) = dp(i)+rp*(p(i+1)-two*p(i)+p(i-1)) - rd*G(i)
+       !write(*,*) "TP     Dil" 
+       !write(*,*) dp(i),rd*G(i)
     end do
 
     ! and at left boundary
@@ -384,10 +395,10 @@ contains
   function getPorepressure(tp) result(p)
 
   type(tp_type),intent(in)   :: tp
-  real(pr),dimension(:),allocatable :: p
+  real(pr),dimension(:,:),allocatable :: p
 
-  allocate(p(size(tp%p,2)))
-  p = tp%p(1,:)
+  !allocate(p(size(tp%p,2)))
+  p = tp%p
 
   end function getPorepressure
 
@@ -395,13 +406,12 @@ contains
   function getTemperature(tp) result(T)
 
   type(tp_type),intent(in)   :: tp
-  real(pr),dimension(:),allocatable :: T
+  real(pr),dimension(:,:),allocatable :: T
 
-  allocate(T(size(tp%T,2)))
-  T = tp%T(1,:)
+  !allocate(T(size(tp%T,2)))
+  T = tp%T
 
   end function getTemperature
 
 
 end module bc_dynflt_tp
-
